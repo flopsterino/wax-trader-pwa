@@ -273,12 +273,14 @@
 
             // Authentication
             async login() {
+                this.log('Attempting to open wallet popup...', 'info');
                 try {
                     const response = await this.sessionKit.login();
                     this.state.session = response.session;
                     this.onLogin();
                 } catch (error) {
                     this.log(`Login failed: ${error.message}`, 'error');
+                    this.log('Please ensure popups are not blocked for this site and try again.', 'error');
                 }
             },
 
