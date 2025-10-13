@@ -129,25 +129,37 @@
                 botIntervalId: null,
                 isTrading: false,
             },
-
-            // DOM Elements
-            elements: {
-                loginButton: document.getElementById('login-button'),
-                logoutButton: document.getElementById('logout-button'),
-                userInfo: document.getElementById('user-info'),
-                accountName: document.getElementById('account-name'),
-                waxBalance: document.getElementById('wax-balance'),
-                mainContent: document.getElementById('main-content'),
-                loginPrompt: document.getElementById('login-prompt'),
-                startBotButton: document.getElementById('start-bot-button'),
-                stopBotButton: document.getElementById('stop-bot-button'),
-                logContainer: document.getElementById('log-container'),
-                tradeAmountInput: document.getElementById('trade-amount'),
-                minProfitInput: document.getElementById('min-profit'),
-            },
+            
+            // DOM Elements (will be populated in init)
+            elements: {},
 
             // Initialization
             async init() {
+                console.log('App initialization started');
+                
+                // Get DOM elements
+                this.elements = {
+                    loginButton: document.getElementById('login-button'),
+                    logoutButton: document.getElementById('logout-button'),
+                    userInfo: document.getElementById('user-info'),
+                    accountName: document.getElementById('account-name'),
+                    waxBalance: document.getElementById('wax-balance'),
+                    mainContent: document.getElementById('main-content'),
+                    loginPrompt: document.getElementById('login-prompt'),
+                    startBotButton: document.getElementById('start-bot-button'),
+                    stopBotButton: document.getElementById('stop-bot-button'),
+                    logContainer: document.getElementById('log-container'),
+                    tradeAmountInput: document.getElementById('trade-amount'),
+                    minProfitInput: document.getElementById('min-profit'),
+                };
+
+                // Verify all elements exist
+                for (const [key, element] of Object.entries(this.elements)) {
+                    if (!element) {
+                        console.error(`Element not found: ${key}`);
+                    }
+                }
+
                 this.log('Initializing WAX Arbitrage Bot...', 'info');
                 await this.initWaxJS();
                 this.addEventListeners();
@@ -164,6 +176,7 @@
                     this.log('WAX connection established.', 'success');
                 } catch (error) {
                     this.log(`Failed to initialize WaxJS: ${error.message}`, 'error');
+                    console.error('WaxJS init error:', error);
                 }
             },
 
@@ -171,7 +184,7 @@
                 try {
                     this.log('Checking for existing session...', 'info');
                     const isAutoLoginAvailable = await this.state.wax.isAutoLoginAvailable();
-                                        
+                                                            
                     if (isAutoLoginAvailable) {
                         this.log('Previous session found, logging in...', 'info');
                         const userAccount = await this.state.wax.login();
@@ -183,14 +196,33 @@
                 } catch (error) {
                     this.log(`Auto-login check failed: ${error.message}`, 'error');
                     this.log('Please click the Login button to connect your wallet.', 'info');
+                    console.error('Auto-login error:', error);
                 }
             },
 
             addEventListeners() {
-                this.elements.loginButton.addEventListener('click', () => this.login());
-                this.elements.logoutButton.addEventListener('click', () => this.logout());
-                this.elements.startBotButton.addEventListener('click', () => this.startBot());
-                this.elements.stopBotButton.addEventListener('click', () => this.stopBot());
+                console.log('Adding event listeners...');
+                
+                if (this.elements.loginButton) {
+                    this.elements.loginButton.addEventListener('click', (e) => {
+                        console.log('Login button clicked');
+                        e.preventDefault();
+                        this.login();
+                    });
+                    console.log('Login button event listener added');
+                } else {
+                    console.error('Login button not found!');
+                }
+
+                if (this.elements.logoutButton) {
+                    this.elements.logoutButton.addEventListener('click', () => this.logout());
+                }
+                if (this.elements.startBotButton) {
+                    this.elements.startBotButton.addEventListener('click', () => this.startBot());
+                }
+                if (this.elements.stopBotButton) {
+                    this.elements.stopBotButton.addEventListener('click', () => this.stopBot());
+                }
             },
 
             // Logging
@@ -202,6 +234,12 @@
                     trade: 'dark:text-yellow-400 text-yellow-600',
                     opportunity: 'dark:text-cyan-400 text-cyan-600',
                 };
+                
+                if (!this.elements.logContainer) {
+                    console.log(`[${type.toUpperCase()}] ${message}`);
+                    return;
+                }
+
                 const logEntry = document.createElement('div');
                 logEntry.className = colors[type];
                 
@@ -210,10 +248,15 @@
 
                 this.elements.logContainer.appendChild(logEntry);
                 this.elements.logContainer.scrollTop = this.elements.logContainer.scrollHeight;
+                
+                // Also log to console
+                console.log(`[${timestamp}] ${message}`);
             },
 
             // Authentication
             async login() {
+                console.log('Login function called');
+                
                 if (this.state.userAccount) {
                     this.log('Already logged in.', 'info');
                     return;
@@ -224,10 +267,14 @@
                     this.elements.loginButton.disabled = true;
                     this.elements.loginButton.textContent = 'Connecting...';
                     
+                    console.log('Calling wax.login()...');
                     const userAccount = await this.state.wax.login();
+                    console.log('Login successful:', userAccount);
+                    
                     this.state.userAccount = userAccount;
                     await this.onLogin();
                 } catch (error) {
+                    console.error('Login error:', error);
                     this.log(`Login failed: ${error.message}`, 'error');
                     this.elements.loginButton.disabled = false;
                     this.elements.loginButton.textContent = 'Login';
@@ -480,8 +527,10 @@
 
         // --- App Initialization ---
         function initializeApp() {
+            console.log('Initializing app...');
             let checks = 0;
             const maxChecks = 50; 
+            
             const checkWaxJs = setInterval(() => {
                 checks++;
                 if (typeof waxjs !== 'undefined' && waxjs.WaxJS) {
@@ -496,6 +545,8 @@
                     if (logContainer) {
                         logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
                     }
+                } else {
+                    console.log(`Waiting for waxjs... (${checks}/${maxChecks})`);
                 }
             }, 100);
         }
