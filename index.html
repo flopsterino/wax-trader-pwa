@@ -246,7 +246,7 @@
             },
 
             displayOpportunity(opportunity) {
-                const { route, profitPercent, tradeAmountWax } = opportunity;
+                const { route, profitPercent } = opportunity;
                 const card = document.createElement('div');
                 card.className = 'bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md border-l-4 border-cyan-400';
                 
@@ -272,10 +272,57 @@
             },
 
             // Authentication
-            async login() { /* ... unchanged ... */ },
-            async onLogin() { /* ... unchanged ... */ },
-            logout() { /* ... unchanged ... */ },
-            async updateWaxBalance() { /* ... unchanged ... */ },
+            async login() {
+                if (this.state.userAccount) { this.log('Already logged in.', 'info'); return; }
+                if (!this.state.wax) { this.log('WAX object not initialized.', 'error'); return; }
+                try {
+                    this.log('Opening WAX Cloud Wallet...', 'info');
+                    this.elements.loginButton.disabled = true;
+                    this.elements.loginButton.textContent = 'Connecting...';
+                    const userAccount = await this.state.wax.login();
+                    if (userAccount) {
+                        this.state.userAccount = userAccount;
+                        await this.onLogin();
+                    } else { throw new Error("Login did not return a user account."); }
+                } catch (error) {
+                    this.log(`Login failed: ${error.message}`, 'error');
+                    this.elements.loginButton.disabled = false;
+                    this.elements.loginButton.textContent = 'Login';
+                    if (String(error).includes('User cancelled')) { this.log('Login cancelled by user.', 'info');
+                    } else if (String(error).includes('popup')) { this.log('Please allow popups for this site to login.', 'error'); }
+                }
+            },
+
+            async onLogin() {
+                this.elements.loginButton.classList.add('hidden');
+                this.elements.userInfo.classList.remove('hidden');
+                this.elements.userInfo.classList.add('flex');
+                this.elements.mainContent.classList.remove('hidden');
+                this.elements.loginPrompt.classList.add('hidden');
+                this.elements.accountName.textContent = this.state.userAccount;
+                this.log(`Successfully logged in as ${this.state.userAccount}`, 'success');
+                await this.updateWaxBalance();
+            },
+
+            logout() {
+                this.stopBot();
+                this.state.userAccount = null;
+                this.elements.loginButton.classList.remove('hidden');
+                this.elements.loginButton.disabled = false;
+                this.elements.loginButton.textContent = 'Login';
+                this.elements.userInfo.classList.add('hidden');
+                this.elements.mainContent.classList.add('hidden');
+                this.elements.loginPrompt.classList.remove('hidden');
+                this.log('Logged out successfully.', 'info');
+            },
+
+            async updateWaxBalance() {
+                if (!this.state.userAccount) return;
+                try {
+                    const balanceResult = await this.state.wax.rpc.get_currency_balance('eosio.token', this.state.userAccount, 'WAX');
+                    this.elements.waxBalance.textContent = balanceResult.length > 0 ? balanceResult[0] : '0.00000000 WAX';
+                } catch (error) { this.log(`Failed to fetch WAX balance: ${error.message}`, 'error'); }
+            },
             
             // Bot Logic
             startBot() {
@@ -312,16 +359,16 @@
             getMarketPrice(tokenA, tokenB) {
                 const tickerId1 = `${tokenA.id}_${tokenB.id}`;
                 const ticker1 = this.state.alcorTickers.find(t => t.ticker_id === tickerId1);
-                if (ticker1) {
+                if (ticker1 && parseFloat(ticker1.last_price) > 0) {
                     // Price is of tokenA in terms of tokenB
-                    return { price: parseFloat(ticker1.last_price), inverted: false };
+                    return { price: parseFloat(ticker1.last_price) };
                 }
 
                 const tickerId2 = `${tokenB.id}_${tokenA.id}`;
                 const ticker2 = this.state.alcorTickers.find(t => t.ticker_id === tickerId2);
                 if (ticker2 && parseFloat(ticker2.last_price) > 0) {
                      // Price is of tokenB in terms of tokenA, so we invert it
-                    return { price: 1 / parseFloat(ticker2.last_price), inverted: true };
+                    return { price: 1 / parseFloat(ticker2.last_price) };
                 }
                 return null;
             },
@@ -338,21 +385,25 @@
                     for (const tokenB of this.config.pairs) {
                         if (tokenB.contract === WAX_TOKEN.contract || tokenA.contract === tokenB.contract) continue;
 
-                        // We need prices for WAX -> A, A -> B, B -> WAX
                         const price_A_in_WAX_data = this.getMarketPrice(tokenA, WAX_TOKEN);
                         const price_B_in_A_data = this.getMarketPrice(tokenB, tokenA);
-                        const price_B_in_WAX_data = this.getMarketPrice(tokenB, WAX_TOKEN);
+                        const price_WAX_in_B_data = this.getMarketPrice(WAX_TOKEN, tokenB);
                         
-                        if (!price_A_in_WAX_data || !price_B_in_A_data || !price_B_in_WAX_data) continue;
+                        if (!price_A_in_WAX_data || !price_B_in_A_data || !price_WAX_in_B_data) continue;
                         
-                        const price_WAX_to_A = price_A_in_WAX_data.price; // How many WAX for 1 A
-                        const price_A_to_B = price_B_in_A_data.price; // How many A for 1 B
-                        const price_B_to_WAX = price_B_in_WAX_data.price; // How many WAX for 1 B
-
                         // Path: WAX -> A -> B -> WAX
-                        const amountA_after_fee = (tradeAmountWax / price_WAX_to_A) * (1 - dex.fee);
-                        const amountB_after_fee = (amountA_after_fee / price_A_to_B) * (1 - dex.fee);
-                        const finalWaxAmount = (amountB_after_fee * price_B_to_WAX) * (1 - dex.fee);
+                        // How much A you get for 1 WAX
+                        const amountA_per_WAX = price_A_in_WAX_data.price > 0 ? 1 / price_A_in_WAX_data.price : 0;
+                        // How much B you get for 1 A
+                        const amountB_per_A = price_B_in_A_data.price > 0 ? 1 / price_B_in_A_data.price : 0;
+                        // How much WAX you get for 1 B
+                        const amountWAX_per_B = price_WAX_in_B_data.price;
+
+                        if(amountA_per_WAX === 0 || amountB_per_A === 0) continue;
+
+                        const amountA = (tradeAmountWax * amountA_per_WAX) * (1 - dex.fee);
+                        const amountB = (amountA * amountB_per_A) * (1 - dex.fee);
+                        const finalWaxAmount = (amountB * amountWAX_per_B) * (1 - dex.fee);
 
                         const profit = finalWaxAmount - tradeAmountWax;
                         const profitPercent = (profit / tradeAmountWax);
@@ -362,16 +413,14 @@
                                 route: [WAX_TOKEN, tokenA, tokenB, WAX_TOKEN],
                                 amounts: {
                                     start: tradeAmountWax,
-                                    intermediateA: amountA_after_fee,
-                                    intermediateB: amountB_after_fee,
+                                    intermediateA: amountA,
+                                    intermediateB: amountB,
                                     end: finalWaxAmount,
                                 },
-                                profitPercent: profitPercent * 100,
-                                tradeAmountWax: tradeAmountWax,
+                                profitPercent: profitPercent * 100
                             };
                             this.displayOpportunity(opportunity);
-                            // To avoid flooding, we can stop after finding one
-                            return; 
+                            return; // Stop after finding one to avoid spam
                         }
                     }
                 }
@@ -399,8 +448,11 @@
                 this.log(`Executing: ${route.map(t=>t.symbol).join(' → ')}`, 'trade');
 
                 try {
-                     const actions = [
-                        // 1. WAX -> Token A
+                    const memo1 = `${minAmountA.toFixed(tokenA.precision)} ${tokenA.symbol}@${tokenA.contract}`;
+                    const memo2 = `${minAmountB.toFixed(tokenB.precision)} ${tokenB.symbol}@${tokenB.contract}`;
+                    const memo3 = `${minFinalWax.toFixed(endToken.precision)} ${endToken.symbol}@${endToken.contract}`;
+                    
+                    const actions = [
                         {
                             account: startToken.contract,
                             name: 'transfer',
@@ -409,37 +461,35 @@
                                 from: this.state.userAccount,
                                 to: dex.contract,
                                 quantity: `${amounts.start.toFixed(startToken.precision)} ${startToken.symbol}`,
-                                memo: `${minAmountA.toFixed(tokenA.precision)} ${tokenA.symbol}@${tokenA.contract}`,
+                                memo: memo1,
                             },
                         },
-                        // 2. Token A -> Token B
-                        {
+                         {
                             account: tokenA.contract,
                             name: 'transfer',
                             authorization: [{ actor: this.state.userAccount, permission: 'active' }],
                             data: {
                                 from: this.state.userAccount,
                                 to: dex.contract,
-                                quantity: `${minAmountA.toFixed(tokenA.precision)} ${tokenA.symbol}`,
-                                memo: `${minAmountB.toFixed(tokenB.precision)} ${tokenB.symbol}@${tokenB.contract}`,
+                                quantity: `0.0000 ${tokenA.symbol}`, // Sending 0, contract uses what it received
+                                memo: memo2,
                             }
                         },
-                        // 3. Token B -> WAX
-                        {
+                         {
                             account: tokenB.contract,
                             name: 'transfer',
                             authorization: [{ actor: this.state.userAccount, permission: 'active' }],
                             data: {
                                 from: this.state.userAccount,
                                 to: dex.contract,
-                                quantity: `${minAmountB.toFixed(tokenB.precision)} ${tokenB.symbol}`,
-                                memo: `${minFinalWax.toFixed(endToken.precision)} ${endToken.symbol}@${endToken.contract}`,
+                                quantity: `0.0000 ${tokenB.symbol}`, // Sending 0
+                                memo: memo3,
                             }
                         }
                     ];
                     
                     this.log('Submitting multi-hop transaction...', 'trade');
-                    const result = await this.state.wax.api.transact({ actions }, { blocksBehind: 3, expireSeconds: 60 });
+                    const result = await this.state.wax.api.transact({ actions }, { blocksBehind: 3, expireSeconds: 90 });
                     this.log(`Transaction successful! TxID: ${result.transaction_id.substring(0, 16)}...`, 'success');
                     await this.updateWaxBalance();
 
@@ -452,7 +502,44 @@
         };
 
         // --- App Initialization ---
-        document.addEventListener('DOMContentLoaded', () => { /* ... unchanged ... */ });
+        document.addEventListener('DOMContentLoaded', () => {
+             let checks = 0;
+            const maxChecks = 100; // 10 seconds timeout
+            const checkInterval = setInterval(() => {
+                checks++;
+                if (typeof waxjs !== 'undefined' && waxjs.WaxJS) {
+                    clearInterval(checkInterval);
+                    initializeApp();
+                } else if (checks > maxChecks) {
+                    clearInterval(checkInterval);
+                    console.error("ERROR: WaxJS library failed to load after 10 seconds.");
+                    const logContainer = document.getElementById('log-container');
+                    const errorMessage = 'Critical Error: WaxJS library failed to load. Please check your internet connection and refresh.';
+                     if (logContainer) {
+                        logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
+                    } else {
+                        document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
+                    }
+                }
+            }, 100);
+
+            async function initializeApp() {
+                try {
+                    const wax = new waxjs.WaxJS({ rpcEndpoint: App.config.rpcEndpoint });
+                    await wax.isAutoLoginAvailable();
+                    App.init(wax);
+                } catch (error) {
+                    console.error("Failed to initialize the application:", error);
+                    const logContainer = document.getElementById('log-container');
+                    const errorMessage = 'Critical Error: Could not start the application. See console for details.';
+                    if(logContainer) {
+                        logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
+                    } else {
+                        document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
+                    }
+                }
+            }
+        });
     </script>
 </body>
 </html>
