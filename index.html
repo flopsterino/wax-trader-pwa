@@ -135,8 +135,6 @@
 
             // Initialization
             async init() {
-                console.log('App initialization started');
-                
                 // Get DOM elements
                 this.elements = {
                     loginButton: document.getElementById('login-button'),
@@ -153,67 +151,39 @@
                     minProfitInput: document.getElementById('min-profit'),
                 };
 
-                // Verify all elements exist
-                for (const [key, element] of Object.entries(this.elements)) {
-                    if (!element) {
-                        console.error(`Element not found: ${key}`);
-                    }
-                }
-
                 this.log('Initializing WAX Arbitrage Bot...', 'info');
-                await this.initWaxJS();
                 this.addEventListeners();
-                await this.autoLogin();
+                await this.initWaxJSAndAutoLogin();
             },
 
-            async initWaxJS() {
+            async initWaxJSAndAutoLogin() {
                 try {
                     this.log('Setting up WAX connection...', 'info');
+                    // tryAutoLogin: true will attempt to auto-login, and if successful, wax.userAccount will be populated
                     this.state.wax = new waxjs.WaxJS({
                         rpcEndpoint: this.config.rpcEndpoint,
                         tryAutoLogin: true
                     });
-                    this.log('WAX connection established.', 'success');
-                } catch (error) {
-                    this.log(`Failed to initialize WaxJS: ${error.message}`, 'error');
-                    console.error('WaxJS init error:', error);
-                }
-            },
+                    
+                    // Wait a brief moment for the auto-login to process
+                    await new Promise(resolve => setTimeout(resolve, 300));
 
-            async autoLogin() {
-                try {
-                    this.log('Checking for existing session...', 'info');
-                    const isAutoLoginAvailable = await this.state.wax.isAutoLoginAvailable();
-                                                            
-                    if (isAutoLoginAvailable) {
-                        this.log('Previous session found, logging in...', 'info');
-                        const userAccount = await this.state.wax.login();
-                        this.state.userAccount = userAccount;
+                    if (this.state.wax.userAccount) {
+                        this.log('Auto-login successful.', 'success');
+                        this.state.userAccount = this.state.wax.userAccount;
                         await this.onLogin();
                     } else {
-                        this.log('No previous session. Please click Login button.', 'info');
+                        this.log('No previous session. Please click the Login button.', 'info');
                     }
                 } catch (error) {
-                    this.log(`Auto-login check failed: ${error.message}`, 'error');
-                    this.log('Please click the Login button to connect your wallet.', 'info');
-                    console.error('Auto-login error:', error);
+                    this.log(`Failed to initialize WaxJS: ${error.message}`, 'error');
                 }
             },
 
             addEventListeners() {
-                console.log('Adding event listeners...');
-                
                 if (this.elements.loginButton) {
-                    this.elements.loginButton.addEventListener('click', (e) => {
-                        console.log('Login button clicked');
-                        e.preventDefault();
-                        this.login();
-                    });
-                    console.log('Login button event listener added');
-                } else {
-                    console.error('Login button not found!');
+                    this.elements.loginButton.addEventListener('click', () => this.login());
                 }
-
                 if (this.elements.logoutButton) {
                     this.elements.logoutButton.addEventListener('click', () => this.logout());
                 }
@@ -235,11 +205,6 @@
                     opportunity: 'dark:text-cyan-400 text-cyan-600',
                 };
                 
-                if (!this.elements.logContainer) {
-                    console.log(`[${type.toUpperCase()}] ${message}`);
-                    return;
-                }
-
                 const logEntry = document.createElement('div');
                 logEntry.className = colors[type];
                 
@@ -248,17 +213,16 @@
 
                 this.elements.logContainer.appendChild(logEntry);
                 this.elements.logContainer.scrollTop = this.elements.logContainer.scrollHeight;
-                
-                // Also log to console
-                console.log(`[${timestamp}] ${message}`);
             },
 
             // Authentication
             async login() {
-                console.log('Login function called');
-                
                 if (this.state.userAccount) {
                     this.log('Already logged in.', 'info');
+                    return;
+                }
+                 if (!this.state.wax) {
+                    this.log('WAX object not initialized. Please wait or refresh.', 'error');
                     return;
                 }
                 
@@ -267,14 +231,15 @@
                     this.elements.loginButton.disabled = true;
                     this.elements.loginButton.textContent = 'Connecting...';
                     
-                    console.log('Calling wax.login()...');
                     const userAccount = await this.state.wax.login();
-                    console.log('Login successful:', userAccount);
                     
-                    this.state.userAccount = userAccount;
-                    await this.onLogin();
+                    if (userAccount) {
+                        this.state.userAccount = userAccount;
+                        await this.onLogin();
+                    } else {
+                         throw new Error("Login did not return a user account.");
+                    }
                 } catch (error) {
-                    console.error('Login error:', error);
                     this.log(`Login failed: ${error.message}`, 'error');
                     this.elements.loginButton.disabled = false;
                     this.elements.loginButton.textContent = 'Login';
@@ -302,6 +267,7 @@
             logout() {
                 this.stopBot();
                 this.state.userAccount = null;
+                // waxjs does not have a logout method, so we just reset the UI
                 this.elements.loginButton.classList.remove('hidden');
                 this.elements.loginButton.disabled = false;
                 this.elements.loginButton.textContent = 'Login';
@@ -527,35 +493,15 @@
 
         // --- App Initialization ---
         function initializeApp() {
-            console.log('Initializing app...');
-            let checks = 0;
-            const maxChecks = 50; 
-            
-            const checkWaxJs = setInterval(() => {
-                checks++;
-                if (typeof waxjs !== 'undefined' && waxjs.WaxJS) {
-                    clearInterval(checkWaxJs);
-                    console.log('WaxJS loaded successfully');
-                    App.init();
-                } else if (checks > maxChecks) {
-                    clearInterval(checkWaxJs);
-                    const errorMessage = 'ERROR: WaxJS library failed to load. Please check your internet connection or try refreshing the page.';
-                    console.error(errorMessage);
-                    const logContainer = document.getElementById('log-container');
-                    if (logContainer) {
-                        logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
-                    }
-                } else {
-                    console.log(`Waiting for waxjs... (${checks}/${maxChecks})`);
-                }
-            }, 100);
+            // Use DOMContentLoaded to ensure the DOM is fully loaded and parsed.
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', App.init.bind(App));
+            } else {
+                App.init();
+            }
         }
 
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeApp);
-        } else {
-            initializeApp();
-        }
+        initializeApp();
 
     </script>
 </body>
