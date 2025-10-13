@@ -152,8 +152,6 @@
             },
 
             handleAutoLogin() {
-                // The waxjs constructor with tryAutoLogin: true already handled the session check.
-                // We just need to check if the userAccount property is now available.
                 if (this.state.wax && this.state.wax.userAccount) {
                     this.log('Auto-login successful.', 'success');
                     this.state.userAccount = this.state.wax.userAccount;
@@ -255,7 +253,6 @@
             logout() {
                 this.stopBot();
                 this.state.userAccount = null;
-                // waxjs does not have a logout method, so we just reset the UI
                 this.elements.loginButton.classList.remove('hidden');
                 this.elements.loginButton.disabled = false;
                 this.elements.loginButton.textContent = 'Login';
@@ -480,39 +477,31 @@
         };
 
         // --- App Initialization ---
-        function initializeApp() {
-            let checks = 0;
-            const maxChecks = 100; // Wait for 10 seconds max
-            const checkInterval = setInterval(() => {
-                checks++;
-                if (typeof waxjs !== 'undefined' && waxjs.WaxJS) {
-                    clearInterval(checkInterval);
-                    try {
-                        const wax = new waxjs.WaxJS({
-                            rpcEndpoint: App.config.rpcEndpoint,
-                            tryAutoLogin: true
-                        });
-                        App.init(wax);
-                    } catch (error) {
-                        console.error("Failed to initialize the application:", error);
-                        document.body.innerHTML = '<div style="color: red; padding: 20px;">Critical Error: Could not start the application. See console for details.</div>';
-                    }
-                } else if (checks > maxChecks) {
-                    clearInterval(checkInterval);
-                    const errorMessage = 'ERROR: WaxJS library failed to load. Please check your internet connection or try refreshing the page.';
-                    console.error(errorMessage);
-                    const logContainer = document.getElementById('log-container');
-                    if (logContainer) {
-                         logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
-                    } else {
-                        document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
-                    }
-                }
-            }, 100);
-        }
+        window.addEventListener('load', async () => {
+            try {
+                // Initialize the waxjs library instance
+                const wax = new waxjs.WaxJS({
+                    rpcEndpoint: App.config.rpcEndpoint
+                });
 
-        // Wait for the DOM to be ready before starting the initialization check
-        document.addEventListener('DOMContentLoaded', initializeApp);
+                // Explicitly check for an existing session
+                await wax.isAutoLoginAvailable();
+
+                // Initialize the main application logic, passing the wax instance
+                // App.init will then check if wax.userAccount is populated
+                App.init(wax);
+
+            } catch (error) {
+                console.error("Failed to initialize the application:", error);
+                const logContainer = document.getElementById('log-container');
+                const errorMessage = 'Critical Error: Could not start the application. See console for details.';
+                if(logContainer) {
+                    logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
+                } else {
+                    document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
+                }
+            }
+        });
 
     </script>
 </body>
