@@ -34,7 +34,6 @@
     <!-- WAXJS -->
     <script src="https://unpkg.com/waxjs@latest/dist/waxjs.js"></script>
 </head>
-
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans antialiased">
     <div id="app" class="container mx-auto p-4 md:p-6 lg:p-8 max-w-4xl">
         
@@ -110,7 +109,6 @@
             // Configuration
             config: {
                 rpcEndpoint: 'https://wax.greymass.com',
-                // Add token pairs here: { symbol, contract, precision }
                 pairs: [
                     { symbol: 'TLM', contract: 'alien.worlds', precision: 4 },
                     { symbol: 'AETHER', contract: 'e.rplanet', precision: 4 },
@@ -150,27 +148,41 @@
 
             // Initialization
             async init() {
-                this.initWaxJS();
+                this.log('Initializing WAX Arbitrage Bot...', 'info');
+                await this.initWaxJS();
                 this.addEventListeners();
-                this.log('App initialized. Please login.');
                 await this.autoLogin();
             },
 
-            initWaxJS() {
-                this.state.wax = new waxjs.WaxJS({
-                    rpcEndpoint: this.config.rpcEndpoint,
-                    tryAutoLogin: false // We will handle autologin manually
-                });
+            async initWaxJS() {
+                try {
+                    this.log('Setting up WAX connection...', 'info');
+                    this.state.wax = new waxjs.WaxJS({
+                        rpcEndpoint: this.config.rpcEndpoint,
+                        tryAutoLogin: true
+                    });
+                    this.log('WAX connection established.', 'success');
+                } catch (error) {
+                    this.log(`Failed to initialize WaxJS: ${error.message}`, 'error');
+                }
             },
 
             async autoLogin() {
                 try {
-                    if (await this.state.wax.isAutoLoginAvailable()) {
-                        this.log('Auto-login available, attempting to connect...', 'info');
-                        await this.login();
+                    this.log('Checking for existing session...', 'info');
+                    const isAutoLoginAvailable = await this.state.wax.isAutoLoginAvailable();
+                                        
+                    if (isAutoLoginAvailable) {
+                        this.log('Previous session found, logging in...', 'info');
+                        const userAccount = await this.state.wax.login();
+                        this.state.userAccount = userAccount;
+                        await this.onLogin();
+                    } else {
+                        this.log('No previous session. Please click Login button.', 'info');
                     }
-                } catch (e) {
-                    this.log(`Auto-login failed: ${e.message}`, 'error');
+                } catch (error) {
+                    this.log(`Auto-login check failed: ${error.message}`, 'error');
+                    this.log('Please click the Login button to connect your wallet.', 'info');
                 }
             },
 
@@ -183,7 +195,7 @@
 
             // Logging
             log(message, type = 'info') {
-                 const colors = {
+                const colors = {
                     info: 'dark:text-gray-400 text-gray-600',
                     success: 'dark:text-green-400 text-green-600',
                     error: 'dark:text-red-400 text-red-600',
@@ -203,16 +215,28 @@
             // Authentication
             async login() {
                 if (this.state.userAccount) {
-                    return this.onLogin();
+                    this.log('Already logged in.', 'info');
+                    return;
                 }
                 
-                this.log('Opening WAX Wallet popup...', 'info');
                 try {
+                    this.log('Opening WAX Cloud Wallet...', 'info');
+                    this.elements.loginButton.disabled = true;
+                    this.elements.loginButton.textContent = 'Connecting...';
+                    
                     const userAccount = await this.state.wax.login();
                     this.state.userAccount = userAccount;
-                    this.onLogin();
+                    await this.onLogin();
                 } catch (error) {
-                    this.log(`Login failed or was cancelled. Error: ${error.message}`, 'error');
+                    this.log(`Login failed: ${error.message}`, 'error');
+                    this.elements.loginButton.disabled = false;
+                    this.elements.loginButton.textContent = 'Login';
+                    
+                    if (error.message.includes('User cancelled')) {
+                        this.log('Login cancelled by user.', 'info');
+                    } else if (error.message.includes('popup')) {
+                        this.log('Please allow popups for this site to login.', 'error');
+                    }
                 }
             },
 
@@ -224,18 +248,20 @@
                 this.elements.loginPrompt.classList.add('hidden');
                 
                 this.elements.accountName.textContent = this.state.userAccount;
-                this.log(`Logged in as ${this.state.userAccount}`, 'success');
+                this.log(`Successfully logged in as ${this.state.userAccount}`, 'success');
                 await this.updateWaxBalance();
             },
 
             logout() {
+                this.stopBot();
                 this.state.userAccount = null;
                 this.elements.loginButton.classList.remove('hidden');
+                this.elements.loginButton.disabled = false;
+                this.elements.loginButton.textContent = 'Login';
                 this.elements.userInfo.classList.add('hidden');
                 this.elements.mainContent.classList.add('hidden');
                 this.elements.loginPrompt.classList.remove('hidden');
-                this.stopBot();
-                this.log('Logged out.');
+                this.log('Logged out successfully.', 'info');
             },
 
             async updateWaxBalance() {
@@ -245,18 +271,18 @@
                     const balanceAmount = balanceResult.length > 0 ? balanceResult[0] : '0.00000000 WAX';
                     this.elements.waxBalance.textContent = balanceAmount;
                 } catch (error) {
-                    this.log('Failed to fetch WAX balance.', 'error');
+                    this.log(`Failed to fetch WAX balance: ${error.message}`, 'error');
                 }
             },
             
-            // Bot Logic (remains largely the same)
+            // Bot Logic
             startBot() {
                 if (this.state.botRunning) return;
                 this.state.botRunning = true;
                 this.elements.startBotButton.disabled = true;
                 this.elements.stopBotButton.disabled = false;
                 this.log('Arbitrage bot started.', 'success');
-                this.runArbitrageCheck(); // Run immediately
+                this.runArbitrageCheck();
                 this.state.botIntervalId = setInterval(() => this.runArbitrageCheck(), this.config.botInterval);
             },
 
@@ -276,12 +302,12 @@
                     return;
                 }
                 this.log('Searching for arbitrage opportunities...', 'info');
-                this.log('--- Checking Inter-DEX (e.g., Alcor vs Taco) ---', 'info');
+                this.log('--- Checking Inter-DEX (Alcor vs Taco) ---', 'info');
                 for (const pair of this.config.pairs) {
                     if (this.state.isTrading) return;
                     await this.checkPair(pair);
                 }
-                this.log('--- Checking Intra-DEX (e.g., WAX > A > B > WAX) ---', 'info');
+                this.log('--- Checking Intra-DEX (multi-hop) ---', 'info');
                 for (const dexName in this.config.dexes) {
                     if (this.state.isTrading) return;
                     await this.checkIntraDexArbitrage(dexName);
@@ -293,7 +319,6 @@
                 const tradeAmountWax = parseFloat(this.elements.tradeAmountInput.value);
                 const minProfitPercent = parseFloat(this.elements.minProfitInput.value) / 100;
                 const WAX_TOKEN = { symbol: 'WAX', contract: 'eosio.token', precision: 8 };
-
                 for (const tokenA of this.config.pairs) {
                     for (const tokenB of this.config.pairs) {
                         if (tokenA.symbol === tokenB.symbol) continue;
@@ -314,7 +339,7 @@
                         if (profit > 0 && profitPercent > minProfitPercent) {
                             const message = `INTRA-DEX OPPORTUNITY on ${dex.name}! WAX → ${tokenA.symbol} → ${tokenB.symbol} → WAX. Est. Profit: ${(profitPercent * 100).toFixed(2)}%`;
                             this.log(message, 'opportunity');
-                            this.log(`Execution of multi-hop trades is not supported. A smart contract is required for atomic multi-hop swaps.`, 'error');
+                            this.log(`Multi-hop trades require smart contract integration.`, 'error');
                             return; 
                         }
                     }
@@ -331,17 +356,15 @@
                         return;
                     }
 
-                    const alcorSellPrice = alcorPriceData.price; // WAX per TOKEN
-                    const tacoSellPrice = tacoPriceData.price; // WAX per TOKEN
+                    const alcorSellPrice = alcorPriceData.price;
+                    const tacoSellPrice = tacoPriceData.price;
 
-                    this.log(`${token.symbol}: Alcor price: ${alcorSellPrice.toFixed(8)} WAX, TacoSwap price: ${tacoSellPrice.toFixed(8)} WAX`);
+                    this.log(`${token.symbol}: Alcor ${alcorSellPrice.toFixed(8)} WAX, Taco ${tacoSellPrice.toFixed(8)} WAX`);
 
                     const tradeAmountWax = parseFloat(this.elements.tradeAmountInput.value);
                     const minProfitPercent = parseFloat(this.elements.minProfitInput.value) / 100;
-
-                    // Opportunity 1: Buy on Alcor, Sell on Taco
-                    const alcorBuyPrice = 1 / alcorSellPrice; // TOKEN per WAX
-                    const tacoBuyPrice = 1 / tacoSellPrice; // TOKEN per WAX
+                    const alcorBuyPrice = 1 / alcorSellPrice;
+                    const tacoBuyPrice = 1 / tacoSellPrice;
                     
                     const buyAlcorSellTacoSpread = (tacoSellPrice / alcorSellPrice) - 1;
                     const buyAlcorSellTacoProfit = (buyAlcorSellTacoSpread - this.config.dexes.alcor.fee - this.config.dexes.taco.fee);
@@ -350,22 +373,20 @@
                         const message = `OPPORTUNITY! Buy ${token.symbol} on Alcor, Sell on Taco. Est. Profit: ${(buyAlcorSellTacoProfit * 100).toFixed(2)}%`;
                         this.log(message, 'opportunity');
                         const amountTokenToBuy = (tradeAmountWax * alcorBuyPrice) * (1 - this.config.dexes.alcor.fee);
-                        this.executeTrade('alcor', 'taco', token, tradeAmountWax, amountTokenToBuy);
+                        await this.executeTrade('alcor', 'taco', token, tradeAmountWax, amountTokenToBuy);
                         return;
                     }
                     
-                    // Opportunity 2: Buy on Taco, Sell on Alcor
                     const buyTacoSellAlcorSpread = (alcorSellPrice / tacoSellPrice) - 1;
                     const buyTacoSellAlcorProfit = (buyTacoSellAlcorSpread - this.config.dexes.alcor.fee - this.config.dexes.taco.fee);
 
                     if (buyTacoSellAlcorProfit > minProfitPercent) {
-                         const message = `OPPORTUNITY! Buy ${token.symbol} on Taco, Sell on Alcor. Est. Profit: ${(buyTacoSellAlcorProfit * 100).toFixed(2)}%`;
+                        const message = `OPPORTUNITY! Buy ${token.symbol} on Taco, Sell on Alcor. Est. Profit: ${(buyTacoSellAlcorProfit * 100).toFixed(2)}%`;
                         this.log(message, 'opportunity');
                         const amountTokenToBuy = (tradeAmountWax * tacoBuyPrice) * (1 - this.config.dexes.taco.fee);
-                        this.executeTrade('taco', 'alcor', token, tradeAmountWax, amountTokenToBuy);
+                        await this.executeTrade('taco', 'alcor', token, tradeAmountWax, amountTokenToBuy);
                         return;
                     }
-
                 } catch (e) {
                     this.log(`Error checking ${token.symbol}: ${e.message}`, 'error');
                 }
@@ -381,22 +402,19 @@
                 if (dexName === 'alcor') dexRandomFactor = 1.001;
                 if (dexName === 'taco') dexRandomFactor = 0.999;
                 
-                // price is how many tokenOut you get for 1 tokenIn
                 const price = (priceIn / priceOut) * dexRandomFactor;
-                const randomVariation = 1 + (Math.random() - 0.5) * 0.01; // +/- 0.5%
+                const randomVariation = 1 + (Math.random() - 0.5) * 0.01;
                 return price * randomVariation;
             },
 
             async getAlcorPrice(token) {
                 const WAX_TOKEN = { symbol: 'WAX', contract: 'eosio.token', precision: 8 };
-                // We want WAX per TOKEN, so tokenOut is WAX, tokenIn is TOKEN
                 const price = await this.getSimulatedPrice(token, WAX_TOKEN, 'alcor'); 
                 return price ? { price } : null;
             },
 
             async getTacoPrice(token) {
                 const WAX_TOKEN = { symbol: 'WAX', contract: 'eosio.token', precision: 8 };
-                 // We want WAX per TOKEN, so tokenOut is WAX, tokenIn is TOKEN
                 const price = await this.getSimulatedPrice(token, WAX_TOKEN, 'taco');
                 return price ? { price } : null;
             },
@@ -404,17 +422,16 @@
             // Trade Execution
             async executeTrade(buyDex, sellDex, token, waxAmount, tokenAmount) {
                 if (this.state.isTrading) {
-                    this.log('Trade execution skipped: Another trade is already in progress.', 'trade');
+                    this.log('Trade skipped: Another trade in progress.', 'trade');
                     return;
                 }
 
                 this.state.isTrading = true;
-                this.log(`Attempting ATOMIC trade: Buy ${token.symbol} on ${buyDex}, sell on ${sellDex}.`, 'trade');
+                this.log(`Executing: Buy ${token.symbol} on ${buyDex}, sell on ${sellDex}.`, 'trade');
 
                 try {
                     const minWaxReturn = waxAmount * (1 + (parseFloat(this.elements.minProfitInput.value) / 100));
-
-                    // Constructing the actions for a single atomic transaction
+                    
                     const actions = [{
                         account: 'eosio.token',
                         name: 'transfer',
@@ -443,18 +460,18 @@
                         }
                     }];
 
-                    this.log('Submitting transaction to WAX Cloud Wallet...', 'trade');
+                    this.log('Submitting transaction to blockchain...', 'trade');
                     
                     const result = await this.state.wax.api.transact({ actions }, {
                         blocksBehind: 3,
                         expireSeconds: 30
                     });
                     
-                    this.log(`Atomic transaction submitted! TxID: ${result.transaction_id.substring(0, 8)}...`, 'success');
+                    this.log(`Transaction successful! TxID: ${result.transaction_id.substring(0, 16)}...`, 'success');
                     await this.updateWaxBalance();
 
                 } catch (e) {
-                    this.log(`Atomic trade failed. Error: ${e.message}`, 'error');
+                    this.log(`Trade failed: ${e.message}`, 'error');
                 } finally {
                     this.state.isTrading = false;
                 }
@@ -462,36 +479,30 @@
         };
 
         // --- App Initialization ---
-        // This function waits for the DOM to be ready and then polls until the waxjs library is loaded.
-        // It includes a timeout to handle environments where the script may be blocked.
         function initializeApp() {
             let checks = 0;
-            const maxChecks = 100; // Wait for a maximum of 10 seconds (100 checks * 100ms)
-
+            const maxChecks = 50; 
             const checkWaxJs = setInterval(() => {
                 checks++;
                 if (typeof waxjs !== 'undefined' && waxjs.WaxJS) {
                     clearInterval(checkWaxJs);
-                    console.log('waxjs library loaded. Initializing app.');
+                    console.log('WaxJS loaded successfully');
                     App.init();
                 } else if (checks > maxChecks) {
                     clearInterval(checkWaxJs);
-                    const errorMessage = 'ERROR: The waxjs library failed to load after 10 seconds, likely due to the restrictive network environment of this preview. The app will work correctly when hosted on a live server like GitHub Pages.';
+                    const errorMessage = 'ERROR: WaxJS library failed to load. Please check your internet connection or try refreshing the page.';
                     console.error(errorMessage);
                     const logContainer = document.getElementById('log-container');
                     if (logContainer) {
-                         logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
+                        logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
                     }
-                } else {
-                    console.log('Waiting for waxjs library to load...');
                 }
-            }, 100); // Check every 100ms
+            }, 100);
         }
 
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeApp);
         } else {
-            // DOMContentLoaded has already fired
             initializeApp();
         }
 
