@@ -130,7 +130,7 @@
                 botRunning: false,
                 botIntervalId: null,
                 isTrading: false,
-                alcorMarkets: null,
+                alcorTickers: null,
                 tacoPools: null,
             },
             
@@ -186,62 +186,50 @@
                 this.elements.updateTokensButton.disabled = true;
                 this.elements.updateTokensButton.textContent = 'Updating...';
 
-                let allTokens = [];
-                let tacoPoolsData = [];
-
                 try {
-                    // Fetch Alcor Markets
-                    this.log('Fetching markets from Alcor...', 'info');
-                    const alcorResponse = await fetch('https://wax.alcor.exchange/api/v2/markets');
-                    
-                    if (!alcorResponse.ok) {
-                        throw new Error(`Alcor API request failed with status: ${alcorResponse.status}`);
-                    }
+                    // --- ALCOR DATA FETCHING ---
+                    this.log('Fetching data from Alcor...', 'info');
 
-                    const alcorMarkets = await alcorResponse.json().catch(e => {
-                        this.log('Failed to parse Alcor JSON response.', 'error');
-                        throw new Error('Invalid JSON from Alcor');
-                    });
+                    // 1. Fetch all pairs to get token metadata (symbol, contract, precision)
+                    const pairsResponse = await fetch('https://wax.alcor.exchange/api/v2/pairs');
+                    if (!pairsResponse.ok) throw new Error(`Alcor API /pairs request failed: ${pairsResponse.status}`);
+                    const alcorPairs = await pairsResponse.json();
 
-                    this.state.alcorMarkets = alcorMarkets;
-                    
-                    const waxPairs = alcorMarkets
-                        .filter(m => m.quote_token && m.quote_token.symbol && m.quote_token.symbol.name === 'WAX')
-                        .map(m => ({
-                            symbol: m.base_token.symbol.name,
-                            contract: m.base_token.contract,
-                            precision: m.base_token.symbol.precision,
+                    // 2. Fetch all tickers to get live price data
+                    const tickersResponse = await fetch('https://wax.alcor.exchange/api/v2/tickers');
+                    if (!tickersResponse.ok) throw new Error(`Alcor API /tickers request failed: ${tickersResponse.status}`);
+                    this.state.alcorTickers = await tickersResponse.json(); // Store tickers with prices
+
+                    // 3. Process the pairs list to populate the app's token list
+                    const waxPairs = alcorPairs
+                        .filter(p => p.target && p.target.contract === 'eosio.token' && p.target.symbol === 'WAX')
+                        .map(p => ({
+                            symbol: p.base.symbol,
+                            contract: p.base.contract,
+                            precision: p.base.precision,
+                            ticker_id: p.ticker_id // Store ticker_id for price lookups
                         }));
-                    
-                    allTokens = waxPairs;
-                    this.log(`Loaded ${allTokens.length} token pairs from Alcor.`, 'success');
+
+                    this.config.pairs = waxPairs;
+                    this.log(`Loaded ${waxPairs.length} token pairs from Alcor.`, 'success');
 
                 } catch (error) {
-                    this.log(`Failed to update tokens from Alcor: ${error.message}`, 'error');
+                    this.log(`Failed to update data from Alcor: ${error.message}`, 'error');
                 }
 
                 try {
-                    // Fetch Taco Pools
+                    // --- TACOSWAP DATA FETCHING ---
                     this.log('Fetching pools from TacoSwap...', 'info');
                     const tacoResponse = await fetch('https://wax.api.tacocrypto.io/v1/pools');
-
-                    if (!tacoResponse.ok) {
-                        throw new Error(`TacoSwap API request failed with status: ${tacoResponse.status}`);
-                    }
-
-                    tacoPoolsData = await tacoResponse.json().catch(e => {
-                        this.log('Failed to parse TacoSwap JSON response.', 'error');
-                        throw new Error('Invalid JSON from TacoSwap');
-                    });
-                    this.state.tacoPools = tacoPoolsData;
-                    this.log(`Loaded ${tacoPoolsData.length} liquidity pools from TacoSwap.`, 'success');
+                    if (!tacoResponse.ok) throw new Error(`TacoSwap API request failed: ${tacoResponse.status}`);
+                    this.state.tacoPools = await tacoResponse.json();
+                    this.log(`Loaded ${this.state.tacoPools.length} liquidity pools from TacoSwap.`, 'success');
 
                 } catch (error) {
                     this.log(`Failed to update pools from TacoSwap: ${error.message}`, 'error');
                 } finally {
                     // Update UI at the end
-                    this.config.pairs = allTokens;
-                    this.elements.tokenCount.textContent = allTokens.length;
+                    this.elements.tokenCount.textContent = this.config.pairs.length;
                     this.elements.updateTokensButton.disabled = false;
                     this.elements.updateTokensButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18a9 9 0 0 0 9-9M3 12a9 9 0 0 0 9 9"/></svg><span>Update Token List</span>';
                 }
@@ -397,12 +385,15 @@
             },
             
             getAlcorPrice(token) {
-                if (!this.state.alcorMarkets) {
-                    this.log('Alcor markets not loaded. Update tokens first.', 'error');
+                if (!this.state.alcorTickers) {
+                    this.log('Alcor tickers not loaded. Update tokens first.', 'error');
                     return null;
                 }
-                const market = this.state.alcorMarkets.find(m => m.base_token.contract === token.contract && m.base_token.symbol.name === token.symbol);
-                return market ? parseFloat(market.last_price) : null;
+                if (!token.ticker_id) {
+                    return null; 
+                }
+                const ticker = this.state.alcorTickers.find(t => t.ticker_id === token.ticker_id);
+                return ticker ? parseFloat(ticker.last_price) : null;
             },
 
             getTacoPrice(token) {
@@ -516,5 +507,6 @@
     </script>
 </body>
 </html>
+
 
 
