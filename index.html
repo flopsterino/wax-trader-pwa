@@ -240,18 +240,24 @@
             },
 
             displayOpportunity(opportunity) {
-                const { intermediateToken, profitPercent, amountIn, expectedOut, finalWaxAmount } = opportunity;
+                const { route, profitPercent, amountIn, finalWaxAmount, intermediateAmounts } = opportunity;
                 const card = document.createElement('div');
                 card.className = 'bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md border-l-4 border-cyan-400';
                 
-                const path = `WAX → ${intermediateToken.symbol} → WAX`;
+                const path = route.map(t => t.symbol).join(' → ');
+                let breakdown = `${amountIn.toFixed(route[0].precision)} ${route[0].symbol}`;
+                for(let i = 0; i < intermediateAmounts.length; i++) {
+                    breakdown += ` → ${intermediateAmounts[i].toFixed(route[i+1].precision)} ${route[i+1].symbol}`;
+                }
+                breakdown += ` → ${finalWaxAmount.toFixed(route[route.length - 1].precision)} ${route[route.length - 1].symbol}`;
+
 
                 card.innerHTML = `
                     <div class="flex justify-between items-center">
                         <div>
                             <p class="font-bold text-gray-900 dark:text-white">${path}</p>
                             <p class="text-sm text-gray-600 dark:text-gray-300">Est. Profit: <span class="font-semibold text-green-500">${profitPercent.toFixed(4)}%</span></p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">${amountIn.toFixed(8)} WAX → ${expectedOut.toFixed(intermediateToken.precision)} ${intermediateToken.symbol} → ${finalWaxAmount.toFixed(8)} WAX</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">${breakdown}</p>
                         </div>
                         <button class="trade-now-button bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg transition">Trade Now</button>
                     </div>
@@ -263,7 +269,7 @@
                     const button = e.target;
                     button.disabled = true;
                     button.textContent = 'Executing...';
-                    this.executeTwoStepTrade(opportunity);
+                    this.executeTrade(opportunity);
                 });
             },
 
@@ -361,42 +367,76 @@
                     return;
                 }
 
-                for (const token of this.config.tokens) {
-                    if (token.id === WAX_TOKEN.id) continue;
+                for (const tokenA of this.config.tokens) {
+                    if (tokenA.id === WAX_TOKEN.id) continue;
 
                     try {
-                        // Step 1: WAX -> Token
-                        const url1 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${WAX_TOKEN.id}&output=${token.id}&amount=${tradeAmountWax.toFixed(WAX_TOKEN.precision)}&slippage=${this.config.slippage}`;
+                        // --- Common Step 1: WAX -> Token A ---
+                        const url1 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${WAX_TOKEN.id}&output=${tokenA.id}&amount=${tradeAmountWax.toFixed(WAX_TOKEN.precision)}&slippage=${this.config.slippage}`;
                         const response1 = await fetch(url1);
                         if(!response1.ok) continue;
                         const routeData1 = await response1.json();
                         if(!routeData1 || !routeData1.output) continue;
-                        const amountOut = parseFloat(routeData1.output);
+                        const amountOutA = parseFloat(routeData1.output);
 
-                        // Step 2: Token -> WAX
-                        const url2 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${token.id}&output=${WAX_TOKEN.id}&amount=${amountOut.toFixed(token.precision)}&slippage=${this.config.slippage}`;
+                        // --- Check for 2-step (A -> WAX) ---
+                        const url2 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${tokenA.id}&output=${WAX_TOKEN.id}&amount=${amountOutA.toFixed(tokenA.precision)}&slippage=${this.config.slippage}`;
                         const response2 = await fetch(url2);
-                        if(!response2.ok) continue;
-                        const routeData2 = await response2.json();
-                        if(!routeData2 || !routeData2.output) continue;
-                         
-                        const finalWaxAmount = parseFloat(routeData2.output);
-                        const profit = finalWaxAmount - tradeAmountWax;
-                        const profitPercent = (profit / tradeAmountWax);
+                        if(response2.ok) {
+                            const routeData2 = await response2.json();
+                            if(routeData2 && routeData2.output) {
+                                const finalWaxAmount = parseFloat(routeData2.output);
+                                const profit = finalWaxAmount - tradeAmountWax;
+                                const profitPercent = (profit / tradeAmountWax);
+                                if (profit > 0 && profitPercent > minProfitPercent) {
+                                     const opportunity = {
+                                        route: [WAX_TOKEN, tokenA, WAX_TOKEN],
+                                        intermediateAmounts: [amountOutA],
+                                        amountIn: tradeAmountWax,
+                                        finalWaxAmount: finalWaxAmount,
+                                        memos: [routeData1.memo, routeData2.memo],
+                                        profitPercent: profitPercent * 100
+                                    };
+                                    this.displayOpportunity(opportunity);
+                                    return;
+                                }
+                            }
+                        }
+                        
+                        // --- Check for 3-step (A -> B -> WAX) ---
+                        for (const tokenB of this.config.tokens) {
+                             if (tokenB.id === WAX_TOKEN.id || tokenB.id === tokenA.id) continue;
+                             try {
+                                const url3 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${tokenA.id}&output=${tokenB.id}&amount=${amountOutA.toFixed(tokenA.precision)}&slippage=${this.config.slippage}`;
+                                const response3 = await fetch(url3);
+                                if (!response3.ok) continue;
+                                const routeData3 = await response3.json();
+                                if (!routeData3 || !routeData3.output) continue;
+                                const amountOutB = parseFloat(routeData3.output);
 
-                        if (profit > 0 && profitPercent > minProfitPercent) {
-                             const opportunity = {
-                                inputToken: WAX_TOKEN,
-                                intermediateToken: token,
-                                amountIn: tradeAmountWax,
-                                expectedOut: amountOut,
-                                memo1: routeData1.memo,
-                                memo2: routeData2.memo,
-                                profitPercent: profitPercent * 100,
-                                finalWaxAmount: finalWaxAmount
-                            };
-                            this.displayOpportunity(opportunity);
-                            return; // Stop after finding one to avoid flooding the UI
+                                const url4 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${tokenB.id}&output=${WAX_TOKEN.id}&amount=${amountOutB.toFixed(tokenB.precision)}&slippage=${this.config.slippage}`;
+                                const response4 = await fetch(url4);
+                                if (!response4.ok) continue;
+                                const routeData4 = await response4.json();
+                                if (!routeData4 || !routeData4.output) continue;
+                                const finalWaxAmount3Step = parseFloat(routeData4.output);
+                                
+                                const profit3Step = finalWaxAmount3Step - tradeAmountWax;
+                                const profitPercent3Step = (profit3Step / tradeAmountWax);
+
+                                if (profit3Step > 0 && profitPercent3Step > minProfitPercent) {
+                                    const opportunity = {
+                                        route: [WAX_TOKEN, tokenA, tokenB, WAX_TOKEN],
+                                        intermediateAmounts: [amountOutA, amountOutB],
+                                        amountIn: tradeAmountWax,
+                                        finalWaxAmount: finalWaxAmount3Step,
+                                        memos: [routeData1.memo, routeData3.memo, routeData4.memo],
+                                        profitPercent: profitPercent3Step * 100
+                                    };
+                                    this.displayOpportunity(opportunity);
+                                    return; // Stop after finding any profitable route
+                                }
+                             } catch(e) { /* continue inner loop */ }
                         }
 
                     } catch(e) { /* Suppress errors for tokens that don't have a valid route */ }
@@ -404,55 +444,50 @@
             },
             
             // Trade Execution
-            async executeTwoStepTrade(opportunity) {
+            async executeTrade(opportunity) {
                 if (this.state.isTrading) {
                     this.log('Trade skipped: Another trade in progress.', 'trade');
                     return;
                 }
                 this.state.isTrading = true;
 
-                const { inputToken, intermediateToken, amountIn, expectedOut, memo1, memo2 } = opportunity;
+                const { route, memos, amountIn, intermediateAmounts } = opportunity;
                 const swapContract = this.config.dexes.alcor.swapContract;
 
                 try {
-                    // --- Step 1: WAX -> Intermediate Token ---
-                    this.log(`Executing Step 1: ${amountIn.toFixed(4)} ${inputToken.symbol} → ${intermediateToken.symbol}`, 'trade');
-                    const result1 = await this.state.wax.api.transact({
-                        actions: [{
-                            account: inputToken.contract,
-                            name: 'transfer',
-                            authorization: [{ actor: this.state.userAccount, permission: 'active' }],
-                            data: {
-                                from: this.state.userAccount,
-                                to: swapContract,
-                                quantity: `${amountIn.toFixed(inputToken.precision)} ${inputToken.symbol}`,
-                                memo: memo1,
-                            },
-                        }]
-                    }, { blocksBehind: 3, expireSeconds: 90 });
-                    this.log(`Step 1 successful: ${result1.transaction_id.substring(0,12)}...`, 'success');
-                    
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait a moment for chain to update
+                    let currentAmount = amountIn;
+                    for (let i = 0; i < memos.length; i++) {
+                        const fromToken = route[i];
+                        const toToken = route[i + 1];
+                        const memo = memos[i];
+                        const quantity = `${currentAmount.toFixed(fromToken.precision)} ${fromToken.symbol}`;
 
-                    // --- Step 2: Intermediate Token -> WAX ---
-                    this.log(`Executing Step 2: ${expectedOut.toFixed(4)} ${intermediateToken.symbol} → ${inputToken.symbol}`, 'trade');
-                     const result2 = await this.state.wax.api.transact({
-                        actions: [{
-                            account: intermediateToken.contract,
-                            name: 'transfer',
-                            authorization: [{ actor: this.state.userAccount, permission: 'active' }],
-                            data: {
-                                from: this.state.userAccount,
-                                to: swapContract,
-                                quantity: `${expectedOut.toFixed(intermediateToken.precision)} ${intermediateToken.symbol}`,
-                                memo: memo2,
-                            },
-                        }]
-                    }, { blocksBehind: 3, expireSeconds: 90 });
-                    this.log(`Step 2 successful: ${result2.transaction_id.substring(0,12)}...`, 'success');
-                    this.log('Full arbitrage trade completed!', 'success');
+                        this.log(`Executing Step ${i + 1}/${memos.length}: ${fromToken.symbol} → ${toToken.symbol}`, 'trade');
+                        
+                        const result = await this.state.wax.api.transact({
+                            actions: [{
+                                account: fromToken.contract,
+                                name: 'transfer',
+                                authorization: [{ actor: this.state.userAccount, permission: 'active' }],
+                                data: {
+                                    from: this.state.userAccount,
+                                    to: swapContract,
+                                    quantity: quantity,
+                                    memo: memo,
+                                },
+                            }]
+                        }, { blocksBehind: 3, expireSeconds: 90 });
+
+                        this.log(`Step ${i + 1} successful: ${result.transaction_id.substring(0,12)}...`, 'success');
+                        
+                        if (i < memos.length - 1) {
+                             await new Promise(resolve => setTimeout(resolve, 1500)); // Wait for chain update
+                             currentAmount = intermediateAmounts[i];
+                        }
+                    }
                     
-                    this.elements.opportunitiesContainer.innerHTML = ''; // Clear opportunities after execution
+                    this.log('Full arbitrage trade completed!', 'success');
+                    this.elements.opportunitiesContainer.innerHTML = '';
 
                 } catch (e) {
                     this.log(`Trade failed: ${e.message}`, 'error');
