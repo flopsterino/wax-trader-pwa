@@ -463,13 +463,25 @@
 
         // --- App Initialization ---
         // This function waits for the DOM to be ready and then polls until the waxjs library is loaded.
-        // This is more robust than window.onload and prevents race conditions.
+        // It includes a timeout to handle environments where the script may be blocked.
         function initializeApp() {
+            let checks = 0;
+            const maxChecks = 100; // Wait for a maximum of 10 seconds (100 checks * 100ms)
+
             const checkWaxJs = setInterval(() => {
-                if (window.waxjs) {
+                checks++;
+                if (typeof waxjs !== 'undefined' && waxjs.WaxJS) {
                     clearInterval(checkWaxJs);
                     console.log('waxjs library loaded. Initializing app.');
                     App.init();
+                } else if (checks > maxChecks) {
+                    clearInterval(checkWaxJs);
+                    const errorMessage = 'ERROR: The waxjs library failed to load after 10 seconds, likely due to the restrictive network environment of this preview. The app will work correctly when hosted on a live server like GitHub Pages.';
+                    console.error(errorMessage);
+                    const logContainer = document.getElementById('log-container');
+                    if (logContainer) {
+                         logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
+                    }
                 } else {
                     console.log('Waiting for waxjs library to load...');
                 }
