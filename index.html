@@ -59,7 +59,7 @@
                 <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Arbitrage Controls</h2>
                 <div class="grid md:grid-cols-2 gap-6 items-end">
                     <div>
-                        <label for="trade-amount" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max WAX per Trade</label>
+                        <label for="trade-amount" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">WAX Amount per Trade</label>
                         <input type="number" id="trade-amount" value="5" class="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
                     </div>
                      <div>
@@ -73,7 +73,7 @@
                             <span>Update Token List</span>
                         </button>
                         <p class="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
-                            <span id="token-count">0</span> tokens loaded. Click to refresh from DEXs.
+                            <span id="token-count">0</span> tokens loaded. Click to refresh from Alcor.
                         </p>
                     </div>
 
@@ -123,12 +123,12 @@
             // Configuration
             config: {
                 rpcEndpoint: 'https://wax.greymass.com',
-                pairs: [],
+                tokens: [],
                 dexes: {
-                    alcor: { name: 'Alcor', contract: 'alcordexmain', fee: 0.002 } // Alcor fee is 0.2%
+                    alcor: { name: 'Alcor', swapContract: 'alcor.pt' } 
                 },
-                botInterval: 15000,
-                slippage: 0.005 // 0.5% slippage protection
+                botInterval: 20000,
+                slippage: 0.30 // Slippage in percent for swap router
             },
 
             // State
@@ -138,7 +138,6 @@
                 botRunning: false,
                 botIntervalId: null,
                 isTrading: false,
-                alcorTickers: null,
             },
             
             // DOM Elements (will be populated in init)
@@ -198,29 +197,24 @@
                     const pairsResponse = await fetch('https://wax.alcor.exchange/api/v2/pairs');
                     if (!pairsResponse.ok) throw new Error(`Alcor API /pairs request failed: ${pairsResponse.status}`);
                     const alcorPairs = await pairsResponse.json();
-
-                    const tickersResponse = await fetch('https://wax.alcor.exchange/api/v2/tickers');
-                    if (!tickersResponse.ok) throw new Error(`Alcor API /tickers request failed: ${tickersResponse.status}`);
-                    this.state.alcorTickers = await tickersResponse.json();
-
-                    // Create a comprehensive list of all tokens involved in any pair
+                    
                      const allTokens = new Map();
                      alcorPairs.forEach(p => {
-                        if (p.base && p.base.contract && p.base.symbol) {
-                            allTokens.set(`${p.base.symbol}@${p.base.contract}`, { ...p.base, id: p.base.id || `${p.base.symbol.toLowerCase()}-${p.base.contract}`});
+                        if (p.base && p.base.contract && p.base.symbol && p.base.id) {
+                            allTokens.set(p.base.id, { ...p.base });
                         }
-                        if (p.target && p.target.contract && p.target.symbol) {
-                            allTokens.set(`${p.target.symbol}@${p.target.contract}`, { ...p.target, id: p.target.id || `${p.target.symbol.toLowerCase()}-${p.target.contract}` });
+                        if (p.target && p.target.contract && p.target.symbol && p.target.id) {
+                            allTokens.set(p.target.id, { ...p.target });
                         }
                     });
 
-                    this.config.pairs = Array.from(allTokens.values());
-                    this.log(`Loaded ${this.config.pairs.length} unique tokens from Alcor.`, 'success');
+                    this.config.tokens = Array.from(allTokens.values());
+                    this.log(`Loaded ${this.config.tokens.length} unique tokens from Alcor.`, 'success');
 
                 } catch (error) {
                     this.log(`Failed to update data from Alcor: ${error.message}`, 'error');
                 } finally {
-                    this.elements.tokenCount.textContent = this.config.pairs.length;
+                    this.elements.tokenCount.textContent = this.config.tokens.length;
                     this.elements.updateTokensButton.disabled = false;
                     this.elements.updateTokensButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18a9 9 0 0 0 9-9M3 12a9 9 0 0 0 9 9"/></svg><span>Update Token List</span>';
                 }
@@ -246,17 +240,18 @@
             },
 
             displayOpportunity(opportunity) {
-                const { route, profitPercent } = opportunity;
+                const { intermediateToken, profitPercent, amountIn, expectedOut, finalWaxAmount } = opportunity;
                 const card = document.createElement('div');
                 card.className = 'bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md border-l-4 border-cyan-400';
                 
-                const path = route.map(t => t.symbol).join(' → ');
+                const path = `WAX → ${intermediateToken.symbol} → WAX`;
 
                 card.innerHTML = `
                     <div class="flex justify-between items-center">
                         <div>
                             <p class="font-bold text-gray-900 dark:text-white">${path}</p>
                             <p class="text-sm text-gray-600 dark:text-gray-300">Est. Profit: <span class="font-semibold text-green-500">${profitPercent.toFixed(4)}%</span></p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">${amountIn.toFixed(8)} WAX → ${expectedOut.toFixed(intermediateToken.precision)} ${intermediateToken.symbol} → ${finalWaxAmount.toFixed(8)} WAX</p>
                         </div>
                         <button class="trade-now-button bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg transition">Trade Now</button>
                     </div>
@@ -265,9 +260,10 @@
                 this.elements.opportunitiesContainer.prepend(card);
                 
                 card.querySelector('.trade-now-button').addEventListener('click', (e) => {
-                    e.target.disabled = true;
-                    e.target.textContent = 'Executing...';
-                    this.executeMultiHopTrade(opportunity);
+                    const button = e.target;
+                    button.disabled = true;
+                    button.textContent = 'Executing...';
+                    this.executeTwoStepTrade(opportunity);
                 });
             },
 
@@ -327,7 +323,7 @@
             // Bot Logic
             startBot() {
                 if (this.state.botRunning) return;
-                if(this.config.pairs.length === 0) {
+                if(this.config.tokens.length === 0) {
                     this.log('Token list is empty. Please update tokens first.', 'error');
                     return;
                 }
@@ -352,151 +348,117 @@
             
             async runArbitrageCheck() {
                 if (this.state.isTrading) { this.log('Skipping check, a trade is in progress.', 'info'); return; }
-                this.log(`Scanning for intra-dex opportunities...`, 'info');
-                await this.checkIntraDexArbitrage();
+                this.log(`Scanning ${this.config.tokens.length} tokens for swap routes...`, 'info');
+                await this.checkSwapRouterArbitrage();
             },
 
-            getMarketPrice(tokenA, tokenB) {
-                const tickerId1 = `${tokenA.id}_${tokenB.id}`;
-                const ticker1 = this.state.alcorTickers.find(t => t.ticker_id === tickerId1);
-                if (ticker1 && parseFloat(ticker1.last_price) > 0) {
-                    // Price is of tokenA in terms of tokenB
-                    return { price: parseFloat(ticker1.last_price) };
-                }
-
-                const tickerId2 = `${tokenB.id}_${tokenA.id}`;
-                const ticker2 = this.state.alcorTickers.find(t => t.ticker_id === tickerId2);
-                if (ticker2 && parseFloat(ticker2.last_price) > 0) {
-                     // Price is of tokenB in terms of tokenA, so we invert it
-                    return { price: 1 / parseFloat(ticker2.last_price) };
-                }
-                return null;
-            },
-
-            async checkIntraDexArbitrage() {
-                const dex = this.config.dexes.alcor;
+            async checkSwapRouterArbitrage() {
                 const tradeAmountWax = parseFloat(this.elements.tradeAmountInput.value);
                 const minProfitPercent = parseFloat(this.elements.minProfitInput.value) / 100;
-                const WAX_TOKEN = this.config.pairs.find(p => p.symbol === 'WAX' && p.contract === 'eosio.token');
-                if(!WAX_TOKEN) return;
+                const WAX_TOKEN = this.config.tokens.find(p => p.symbol === 'WAX' && p.contract === 'eosio.token');
+                if(!WAX_TOKEN) {
+                    this.log('WAX token not found in list. Update tokens.', 'error');
+                    return;
+                }
 
-                for (const tokenA of this.config.pairs) {
-                    if (tokenA.contract === WAX_TOKEN.contract) continue;
-                    for (const tokenB of this.config.pairs) {
-                        if (tokenB.contract === WAX_TOKEN.contract || tokenA.contract === tokenB.contract) continue;
+                for (const token of this.config.tokens) {
+                    if (token.id === WAX_TOKEN.id) continue;
 
-                        const price_A_in_WAX_data = this.getMarketPrice(tokenA, WAX_TOKEN);
-                        const price_B_in_A_data = this.getMarketPrice(tokenB, tokenA);
-                        const price_WAX_in_B_data = this.getMarketPrice(WAX_TOKEN, tokenB);
-                        
-                        if (!price_A_in_WAX_data || !price_B_in_A_data || !price_WAX_in_B_data) continue;
-                        
-                        // Path: WAX -> A -> B -> WAX
-                        // How much A you get for 1 WAX
-                        const amountA_per_WAX = price_A_in_WAX_data.price > 0 ? 1 / price_A_in_WAX_data.price : 0;
-                        // How much B you get for 1 A
-                        const amountB_per_A = price_B_in_A_data.price > 0 ? 1 / price_B_in_A_data.price : 0;
-                        // How much WAX you get for 1 B
-                        const amountWAX_per_B = price_WAX_in_B_data.price;
+                    try {
+                        // Step 1: WAX -> Token
+                        const url1 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${WAX_TOKEN.id}&output=${token.id}&amount=${tradeAmountWax.toFixed(WAX_TOKEN.precision)}&slippage=${this.config.slippage}`;
+                        const response1 = await fetch(url1);
+                        if(!response1.ok) continue;
+                        const routeData1 = await response1.json();
+                        if(!routeData1 || !routeData1.output) continue;
+                        const amountOut = parseFloat(routeData1.output);
 
-                        if(amountA_per_WAX === 0 || amountB_per_A === 0) continue;
-
-                        const amountA = (tradeAmountWax * amountA_per_WAX) * (1 - dex.fee);
-                        const amountB = (amountA * amountB_per_A) * (1 - dex.fee);
-                        const finalWaxAmount = (amountB * amountWAX_per_B) * (1 - dex.fee);
-
+                        // Step 2: Token -> WAX
+                        const url2 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${token.id}&output=${WAX_TOKEN.id}&amount=${amountOut.toFixed(token.precision)}&slippage=${this.config.slippage}`;
+                        const response2 = await fetch(url2);
+                        if(!response2.ok) continue;
+                        const routeData2 = await response2.json();
+                        if(!routeData2 || !routeData2.output) continue;
+                         
+                        const finalWaxAmount = parseFloat(routeData2.output);
                         const profit = finalWaxAmount - tradeAmountWax;
                         const profitPercent = (profit / tradeAmountWax);
 
                         if (profit > 0 && profitPercent > minProfitPercent) {
                              const opportunity = {
-                                route: [WAX_TOKEN, tokenA, tokenB, WAX_TOKEN],
-                                amounts: {
-                                    start: tradeAmountWax,
-                                    intermediateA: amountA,
-                                    intermediateB: amountB,
-                                    end: finalWaxAmount,
-                                },
-                                profitPercent: profitPercent * 100
+                                inputToken: WAX_TOKEN,
+                                intermediateToken: token,
+                                amountIn: tradeAmountWax,
+                                expectedOut: amountOut,
+                                memo1: routeData1.memo,
+                                memo2: routeData2.memo,
+                                profitPercent: profitPercent * 100,
+                                finalWaxAmount: finalWaxAmount
                             };
                             this.displayOpportunity(opportunity);
-                            return; // Stop after finding one to avoid spam
+                            return; // Stop after finding one to avoid flooding the UI
                         }
-                    }
+
+                    } catch(e) { /* Suppress errors for tokens that don't have a valid route */ }
                 }
             },
             
             // Trade Execution
-            async executeMultiHopTrade(opportunity) {
+            async executeTwoStepTrade(opportunity) {
                 if (this.state.isTrading) {
                     this.log('Trade skipped: Another trade in progress.', 'trade');
                     return;
                 }
                 this.state.isTrading = true;
 
-                const { route, amounts } = opportunity;
-                const dex = this.config.dexes.alcor;
-                const slippage = this.config.slippage;
-
-                const [startToken, tokenA, tokenB, endToken] = route;
-                
-                // Calculate minimum amounts to receive with slippage protection
-                const minAmountA = amounts.intermediateA * (1 - slippage);
-                const minAmountB = amounts.intermediateB * (1 - slippage);
-                const minFinalWax = amounts.end * (1 - slippage);
-
-                this.log(`Executing: ${route.map(t=>t.symbol).join(' → ')}`, 'trade');
+                const { inputToken, intermediateToken, amountIn, expectedOut, memo1, memo2 } = opportunity;
+                const swapContract = this.config.dexes.alcor.swapContract;
 
                 try {
-                    const memo1 = `${minAmountA.toFixed(tokenA.precision)} ${tokenA.symbol}@${tokenA.contract}`;
-                    const memo2 = `${minAmountB.toFixed(tokenB.precision)} ${tokenB.symbol}@${tokenB.contract}`;
-                    const memo3 = `${minFinalWax.toFixed(endToken.precision)} ${endToken.symbol}@${endToken.contract}`;
-                    
-                    const actions = [
-                        {
-                            account: startToken.contract,
+                    // --- Step 1: WAX -> Intermediate Token ---
+                    this.log(`Executing Step 1: ${amountIn.toFixed(4)} ${inputToken.symbol} → ${intermediateToken.symbol}`, 'trade');
+                    const result1 = await this.state.wax.api.transact({
+                        actions: [{
+                            account: inputToken.contract,
                             name: 'transfer',
                             authorization: [{ actor: this.state.userAccount, permission: 'active' }],
                             data: {
                                 from: this.state.userAccount,
-                                to: dex.contract,
-                                quantity: `${amounts.start.toFixed(startToken.precision)} ${startToken.symbol}`,
+                                to: swapContract,
+                                quantity: `${amountIn.toFixed(inputToken.precision)} ${inputToken.symbol}`,
                                 memo: memo1,
                             },
-                        },
-                         {
-                            account: tokenA.contract,
-                            name: 'transfer',
-                            authorization: [{ actor: this.state.userAccount, permission: 'active' }],
-                            data: {
-                                from: this.state.userAccount,
-                                to: dex.contract,
-                                quantity: `0.0000 ${tokenA.symbol}`, // Sending 0, contract uses what it received
-                                memo: memo2,
-                            }
-                        },
-                         {
-                            account: tokenB.contract,
-                            name: 'transfer',
-                            authorization: [{ actor: this.state.userAccount, permission: 'active' }],
-                            data: {
-                                from: this.state.userAccount,
-                                to: dex.contract,
-                                quantity: `0.0000 ${tokenB.symbol}`, // Sending 0
-                                memo: memo3,
-                            }
-                        }
-                    ];
+                        }]
+                    }, { blocksBehind: 3, expireSeconds: 90 });
+                    this.log(`Step 1 successful: ${result1.transaction_id.substring(0,12)}...`, 'success');
                     
-                    this.log('Submitting multi-hop transaction...', 'trade');
-                    const result = await this.state.wax.api.transact({ actions }, { blocksBehind: 3, expireSeconds: 90 });
-                    this.log(`Transaction successful! TxID: ${result.transaction_id.substring(0, 16)}...`, 'success');
-                    await this.updateWaxBalance();
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait a moment for chain to update
+
+                    // --- Step 2: Intermediate Token -> WAX ---
+                    this.log(`Executing Step 2: ${expectedOut.toFixed(4)} ${intermediateToken.symbol} → ${inputToken.symbol}`, 'trade');
+                     const result2 = await this.state.wax.api.transact({
+                        actions: [{
+                            account: intermediateToken.contract,
+                            name: 'transfer',
+                            authorization: [{ actor: this.state.userAccount, permission: 'active' }],
+                            data: {
+                                from: this.state.userAccount,
+                                to: swapContract,
+                                quantity: `${expectedOut.toFixed(intermediateToken.precision)} ${intermediateToken.symbol}`,
+                                memo: memo2,
+                            },
+                        }]
+                    }, { blocksBehind: 3, expireSeconds: 90 });
+                    this.log(`Step 2 successful: ${result2.transaction_id.substring(0,12)}...`, 'success');
+                    this.log('Full arbitrage trade completed!', 'success');
+                    
+                    this.elements.opportunitiesContainer.innerHTML = ''; // Clear opportunities after execution
 
                 } catch (e) {
-                    this.log(`Multi-hop trade failed: ${e.message}`, 'error');
+                    this.log(`Trade failed: ${e.message}`, 'error');
                 } finally {
                     this.state.isTrading = false;
+                    await this.updateWaxBalance();
                 }
             }
         };
