@@ -117,8 +117,7 @@
                 rpcEndpoint: 'https://wax.greymass.com',
                 pairs: [],
                 dexes: {
-                    alcor: { name: 'Alcor', contract: 'alcor.pt', fee: 0.003 },
-                    taco: { name: 'TacoSwap', contract: 'swap.taco', fee: 0.003 }
+                    alcor: { name: 'Alcor', contract: 'alcordexmain', fee: 0.003 }
                 },
                 botInterval: 15000,
             },
@@ -131,7 +130,6 @@
                 botIntervalId: null,
                 isTrading: false,
                 alcorTickers: null,
-                tacoPools: null,
             },
             
             // DOM Elements (will be populated in init)
@@ -182,15 +180,12 @@
             },
             
             async updateTokensAndPools() {
-                this.log('Fetching token and pool lists...', 'info');
+                this.log('Fetching token lists from Alcor...', 'info');
                 this.elements.updateTokensButton.disabled = true;
                 this.elements.updateTokensButton.textContent = 'Updating...';
 
                 try {
-                    // --- ALCOR DATA FETCHING ---
-                    this.log('Fetching data from Alcor...', 'info');
-
-                    // 1. Fetch all pairs to get token metadata (symbol, contract, precision)
+                    // 1. Fetch all pairs to get token metadata
                     const pairsResponse = await fetch('https://wax.alcor.exchange/api/v2/pairs');
                     if (!pairsResponse.ok) throw new Error(`Alcor API /pairs request failed: ${pairsResponse.status}`);
                     const alcorPairs = await pairsResponse.json();
@@ -198,7 +193,7 @@
                     // 2. Fetch all tickers to get live price data
                     const tickersResponse = await fetch('https://wax.alcor.exchange/api/v2/tickers');
                     if (!tickersResponse.ok) throw new Error(`Alcor API /tickers request failed: ${tickersResponse.status}`);
-                    this.state.alcorTickers = await tickersResponse.json(); // Store tickers with prices
+                    this.state.alcorTickers = await tickersResponse.json();
 
                     // 3. Process the pairs list to populate the app's token list
                     const waxPairs = alcorPairs
@@ -207,7 +202,7 @@
                             symbol: p.base.symbol,
                             contract: p.base.contract,
                             precision: p.base.precision,
-                            ticker_id: p.ticker_id // Store ticker_id for price lookups
+                            ticker_id: p.ticker_id
                         }));
 
                     this.config.pairs = waxPairs;
@@ -215,20 +210,7 @@
 
                 } catch (error) {
                     this.log(`Failed to update data from Alcor: ${error.message}`, 'error');
-                }
-
-                try {
-                    // --- TACOSWAP DATA FETCHING ---
-                    this.log('Fetching pools from TacoSwap...', 'info');
-                    const tacoResponse = await fetch('https://wax.api.tacocrypto.io/v1/pools');
-                    if (!tacoResponse.ok) throw new Error(`TacoSwap API request failed: ${tacoResponse.status}`);
-                    this.state.tacoPools = await tacoResponse.json();
-                    this.log(`Loaded ${this.state.tacoPools.length} liquidity pools from TacoSwap.`, 'success');
-
-                } catch (error) {
-                    this.log(`Failed to update pools from TacoSwap: ${error.message}`, 'error');
                 } finally {
-                    // Update UI at the end
                     this.elements.tokenCount.textContent = this.config.pairs.length;
                     this.elements.updateTokensButton.disabled = false;
                     this.elements.updateTokensButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18a9 9 0 0 0 9-9M3 12a9 9 0 0 0 9 9"/></svg><span>Update Token List</span>';
@@ -335,52 +317,43 @@
             async runArbitrageCheck() {
                 if (this.state.isTrading) { this.log('Skipping check, a trade is in progress.', 'info'); return; }
                 this.log(`Scanning ${this.config.pairs.length} pairs for opportunities...`, 'info');
-                this.log('--- Checking Inter-DEX (Alcor vs Taco) ---', 'info');
-                for (const pair of this.config.pairs) {
-                    if (this.state.isTrading) return; // Exit early if a trade started
-                    await this.checkPair(pair);
-                }
-                this.log('--- Checking Intra-DEX (multi-hop) ---', 'info');
-                this.log('Intra-DEX arbitrage is currently disabled.', 'info');
+                this.log('--- Checking Intra-DEX on Alcor ---', 'info');
+                await this.checkIntraDexArbitrage();
             },
-            
-            async checkPair(token) {
-                try {
-                    const alcorPrice = this.getAlcorPrice(token);
-                    const tacoPrice = this.getTacoPrice(token);
 
-                    if (!alcorPrice || !tacoPrice) { return; } // Pair not on both DEXs
+            async checkIntraDexArbitrage() {
+                const dex = this.config.dexes.alcor;
+                const tradeAmountWax = parseFloat(this.elements.tradeAmountInput.value);
+                const minProfitPercent = parseFloat(this.elements.minProfitInput.value) / 100;
 
-                    this.log(`${token.symbol}: Alcor ${alcorPrice.toFixed(8)} WAX, Taco ${tacoPrice.toFixed(8)} WAX`);
+                for (const tokenA of this.config.pairs) {
+                    for (const tokenB of this.config.pairs) {
+                        if (tokenA.symbol === tokenB.symbol) continue;
 
-                    const tradeAmountWax = parseFloat(this.elements.tradeAmountInput.value);
-                    const minProfitPercent = parseFloat(this.elements.minProfitInput.value) / 100;
-                    
-                    // Scenario 1: Buy on Alcor, Sell on Taco
-                    const buyAlcorSellTacoSpread = (tacoPrice / alcorPrice) - 1;
-                    const buyAlcorSellTacoProfit = (buyAlcorSellTacoSpread - this.config.dexes.alcor.fee - this.config.dexes.taco.fee);
-                    
-                    if (buyAlcorSellTacoProfit > minProfitPercent) {
-                        const message = `OPPORTUNITY! Buy ${token.symbol} on Alcor, Sell on Taco. Est. Profit: ${(buyAlcorSellTacoProfit * 100).toFixed(2)}%`;
-                        this.log(message, 'opportunity');
-                        const amountTokenToBuy = (tradeAmountWax / alcorPrice) * (1 - this.config.dexes.alcor.fee);
-                        await this.executeTrade('alcor', 'taco', token, tradeAmountWax, amountTokenToBuy);
-                        return;
+                        // Prices are Token in terms of WAX
+                        const priceA_in_WAX = this.getAlcorPrice(tokenA);
+                        const priceB_in_WAX = this.getAlcorPrice(tokenB);
+
+                        if (!priceA_in_WAX || !priceB_in_WAX) continue;
+
+                        // Calculate synthetic price of Token A in terms of Token B
+                        const priceA_in_B = priceA_in_WAX / priceB_in_WAX;
+
+                        // WAX -> Token B -> Token A -> WAX
+                        const amountB = (tradeAmountWax / priceB_in_WAX) * (1 - dex.fee);
+                        const amountA = (amountB * priceA_in_B) * (1 - dex.fee); // This is an approximation
+                        const finalWaxAmount = (amountA * priceA_in_WAX) * (1 - dex.fee);
+                        
+                        const profit = finalWaxAmount - tradeAmountWax;
+                        const profitPercent = (profit / tradeAmountWax);
+
+                        if (profit > 0 && profitPercent > minProfitPercent) {
+                            const message = `INTRA-DEX OPPORTUNITY on Alcor! WAX → ${tokenB.symbol} → ${tokenA.symbol} → WAX. Est. Profit: ${(profitPercent * 100).toFixed(2)}%`;
+                            this.log(message, 'opportunity');
+                            this.log(`Execution for multi-hop trades is not implemented.`, 'trade');
+                            return; 
+                        }
                     }
-                    
-                    // Scenario 2: Buy on Taco, Sell on Alcor
-                    const buyTacoSellAlcorSpread = (alcorPrice / tacoPrice) - 1;
-                    const buyTacoSellAlcorProfit = (buyTacoSellAlcorSpread - this.config.dexes.alcor.fee - this.config.dexes.taco.fee);
-
-                    if (buyTacoSellAlcorProfit > minProfitPercent) {
-                        const message = `OPPORTUNITY! Buy ${token.symbol} on Taco, Sell on Alcor. Est. Profit: ${(buyTacoSellAlcorProfit * 100).toFixed(2)}%`;
-                        this.log(message, 'opportunity');
-                        const amountTokenToBuy = (tradeAmountWax / tacoPrice) * (1 - this.config.dexes.taco.fee);
-                        await this.executeTrade('taco', 'alcor', token, tradeAmountWax, amountTokenToBuy);
-                        return;
-                    }
-                } catch (e) {
-                    this.log(`Error checking ${token.symbol}: ${e.message}`, 'error');
                 }
             },
             
@@ -394,27 +367,6 @@
                 }
                 const ticker = this.state.alcorTickers.find(t => t.ticker_id === token.ticker_id);
                 return ticker ? parseFloat(ticker.last_price) : null;
-            },
-
-            getTacoPrice(token) {
-                if (!this.state.tacoPools) {
-                    this.log('TacoSwap pools not loaded. Update tokens first.', 'error');
-                    return null;
-                }
-                const pool = this.state.tacoPools.find(p => 
-                    (p.token1.contract === 'eosio.token' && p.token2.contract === token.contract) ||
-                    (p.token2.contract === 'eosio.token' && p.token1.contract === token.contract)
-                );
-
-                if (!pool) return null;
-
-                const waxToken = pool.token1.contract === 'eosio.token' ? pool.token1 : pool.token2;
-                const otherToken = pool.token1.contract === token.contract ? pool.token1 : pool.token2;
-
-                if (parseFloat(otherToken.reserve) === 0) return null; // Avoid division by zero
-
-                // Price of token in WAX = WAX reserve / other token reserve
-                return parseFloat(waxToken.reserve) / parseFloat(otherToken.reserve);
             },
             
             // Trade Execution
@@ -507,6 +459,4 @@
     </script>
 </body>
 </html>
-
-
 
