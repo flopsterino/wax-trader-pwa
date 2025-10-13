@@ -345,8 +345,55 @@
                 }
                 
                 this.log('Searching for arbitrage opportunities...', 'info');
+                
+                // 1. Inter-DEX checks
+                this.log('--- Checking Inter-DEX (e.g., Alcor vs Taco) ---', 'info');
                 for (const pair of this.config.pairs) {
+                    if (this.state.isTrading) return; // Stop if a trade has started
                     await this.checkPair(pair);
+                }
+                
+                // 2. Intra-DEX checks (new)
+                this.log('--- Checking Intra-DEX (e.g., WAX > A > B > WAX) ---', 'info');
+                for (const dexName in this.config.dexes) {
+                    if (this.state.isTrading) return; // Stop if a trade has started
+                    await this.checkIntraDexArbitrage(dexName);
+                }
+            },
+
+            async checkIntraDexArbitrage(dexName) {
+                const dex = this.config.dexes[dexName];
+                const tradeAmountWax = parseFloat(this.elements.tradeAmountInput.value);
+                const minProfitPercent = parseFloat(this.elements.minProfitInput.value) / 100;
+                const WAX_TOKEN = { symbol: 'WAX', contract: 'eosio.token', precision: 8 };
+
+                // Iterate through all combinations of intermediate tokens
+                for (const tokenA of this.config.pairs) {
+                    for (const tokenB of this.config.pairs) {
+                        if (tokenA.symbol === tokenB.symbol) continue;
+
+                        // Get prices for each leg of the journey
+                        const price_WAX_to_A = await this.getSimulatedPrice(WAX_TOKEN, tokenA, dexName);
+                        const price_A_to_B = await this.getSimulatedPrice(tokenA, tokenB, dexName);
+                        const price_B_to_WAX = await this.getSimulatedPrice(tokenB, WAX_TOKEN, dexName);
+
+                        if (!price_WAX_to_A || !price_A_to_B || !price_B_to_WAX) continue;
+
+                        // Calculate expected outcome after fees for each hop
+                        const amountA = (tradeAmountWax * price_WAX_to_A) * (1 - dex.fee);
+                        const amountB = (amountA * price_A_to_B) * (1 - dex.fee);
+                        const finalWaxAmount = (amountB * price_B_to_WAX) * (1 - dex.fee);
+
+                        const profit = finalWaxAmount - tradeAmountWax;
+                        const profitPercent = (profit / tradeAmountWax);
+
+                        if (profit > 0 && profitPercent > minProfitPercent) {
+                            const message = `INTRA-DEX OPPORTUNITY on ${dex.name}! WAX → ${tokenA.symbol} → ${tokenB.symbol} → WAX. Est. Profit: ${(profitPercent * 100).toFixed(2)}%`;
+                            this.log(message, 'opportunity');
+                            this.log(`Execution of multi-hop trades is not supported. A smart contract is required for atomic multi-hop swaps.`, 'error');
+                            return; 
+                        }
+                    }
                 }
             },
             
@@ -363,17 +410,17 @@
                     const alcorBuyPrice = alcorPriceData.price; // WAX per TOKEN
                     const tacoSellPrice = tacoPriceData.price; // WAX per TOKEN
 
-                    this.log(`${token.symbol}: Alcor price: ${alcorBuyPrice.toFixed(6)} WAX, TacoSwap price: ${tacoSellPrice.toFixed(6)} WAX`);
+                    this.log(`${token.symbol}: Alcor price: ${alcorBuyPrice.toFixed(8)} WAX, TacoSwap price: ${tacoSellPrice.toFixed(8)} WAX`);
 
                     const tradeAmountWax = parseFloat(this.elements.tradeAmountInput.value);
                     const minProfitPercent = parseFloat(this.elements.minProfitInput.value) / 100;
 
                     // Opportunity 1: Buy on Alcor, Sell on Taco
                     const buyAlcorSellTacoSpread = (tacoSellPrice / alcorBuyPrice) - 1;
-                    const buyAlcorSellTacoProfit = (buyAlcorSellTacoSpread - this.config.dexes.alcor.fee - this.config.dexes.taco.fee) * 100;
+                    const buyAlcorSellTacoProfit = (buyAlcorSellTacoSpread - this.config.dexes.alcor.fee - this.config.dexes.taco.fee);
                     
                     if (buyAlcorSellTacoProfit > minProfitPercent) {
-                        const message = `OPPORTUNITY! Buy ${token.symbol} on Alcor, Sell on Taco. Est. Profit: ${buyAlcorSellTacoProfit.toFixed(2)}%`;
+                        const message = `OPPORTUNITY! Buy ${token.symbol} on Alcor, Sell on Taco. Est. Profit: ${(buyAlcorSellTacoProfit * 100).toFixed(2)}%`;
                         this.log(message, 'opportunity');
                         const amountTokenToBuy = (tradeAmountWax / alcorBuyPrice) * (1 - this.config.dexes.alcor.fee);
                         this.executeTrade('alcor', 'taco', token, tradeAmountWax, amountTokenToBuy);
@@ -382,10 +429,10 @@
                     
                     // Opportunity 2: Buy on Taco, Sell on Alcor
                     const buyTacoSellAlcorSpread = (alcorBuyPrice / tacoSellPrice) - 1;
-                    const buyTacoSellAlcorProfit = (buyTacoSellAlcorSpread - this.config.dexes.alcor.fee - this.config.dexes.taco.fee) * 100;
+                    const buyTacoSellAlcorProfit = (buyTacoSellAlcorSpread - this.config.dexes.alcor.fee - this.config.dexes.taco.fee);
 
                     if (buyTacoSellAlcorProfit > minProfitPercent) {
-                         const message = `OPPORTUNITY! Buy ${token.symbol} on Taco, Sell on Alcor. Est. Profit: ${buyTacoSellAlcorProfit.toFixed(2)}%`;
+                         const message = `OPPORTUNITY! Buy ${token.symbol} on Taco, Sell on Alcor. Est. Profit: ${(buyTacoSellAlcorProfit * 100).toFixed(2)}%`;
                         this.log(message, 'opportunity');
                         const amountTokenToBuy = (tradeAmountWax / tacoSellPrice) * (1 - this.config.dexes.taco.fee);
                         this.executeTrade('taco', 'alcor', token, tradeAmountWax, amountTokenToBuy);
@@ -398,40 +445,33 @@
             },
 
             // Price fetching from DEXs
+            async getSimulatedPrice(tokenIn, tokenOut, dexName) {
+                // A very basic simulation. In reality, this requires complex RPC calls to get pool liquidity.
+                const basePrices = { 'WAX': 1.0, 'TLM': 0.02, 'AETHER': 0.0001, 'SHING': 0.00005 };
+                const priceIn = basePrices[tokenIn.symbol];
+                const priceOut = basePrices[tokenOut.symbol];
+                if (priceIn === undefined || priceOut === undefined) return null;
+
+                // Simulate slightly different prices on different exchanges
+                let dexRandomFactor = 1.0;
+                if (dexName === 'alcor') dexRandomFactor = 1.001;
+                if (dexName === 'taco') dexRandomFactor = 0.999;
+                
+                const price = (priceOut / priceIn) * dexRandomFactor;
+                const randomVariation = 1 + (Math.random() - 0.5) * 0.01; // +/- 0.5% slippage/variation
+                return price * randomVariation;
+            },
+
             async getAlcorPrice(token) {
-                const response = await fetch(`${this.config.rpcEndpoint}/v1/chain/get_table_rows`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        json: true,
-                        code: 'alcor.exchange',
-                        scope: 'alcor.exchange',
-                        table: 'markets',
-                        limit: 1,
-                        lower_bound: 135 // This is an example market ID, this would need to be dynamic
-                    }),
-                });
-                // This is a simplified stub. Alcor has a more complex market ID system.
-                // A robust solution would fetch the market ID for the pair first.
-                // For this example, we'll return a simulated price.
-                const randomFactor = 1 + (Math.random() - 0.5) * 0.05; // +/- 2.5%
-                return { price: (0.1 / (this.config.pairs.indexOf(token) + 1)) * randomFactor };
+                const WAX_TOKEN = { symbol: 'WAX', contract: 'eosio.token', precision: 8 };
+                const price = await this.getSimulatedPrice(token, WAX_TOKEN, 'alcor'); // Price of token in WAX
+                return price ? { price } : null;
             },
 
             async getTacoPrice(token) {
-                 const response = await fetch(`${this.config.rpcEndpoint}/v1/chain/get_table_rows`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        code: this.config.dexes.taco.contract,
-                        scope: this.config.dexes.taco.contract,
-                        table: 'pairs',
-                        json: true,
-                    }),
-                });
-                // This is also a stub. A real implementation would parse the 'pairs' table
-                // to find the correct liquidity pool and calculate the price.
-                // For this example, we'll return another simulated price.
-                 const randomFactor = 1 + (Math.random() - 0.5) * 0.05; // +/- 2.5%
-                return { price: (0.1 / (this.config.pairs.indexOf(token) + 1)) * randomFactor };
+                const WAX_TOKEN = { symbol: 'WAX', contract: 'eosio.token', precision: 8 };
+                const price = await this.getSimulatedPrice(token, WAX_TOKEN, 'taco'); // Price of token in WAX
+                return price ? { price } : null;
             },
             
             // Trade Execution
@@ -457,7 +497,6 @@
                             to: this.config.dexes[buyDex].contract,
                             quantity: `${waxAmount.toFixed(8)} WAX`,
                             // NOTE: DEX memos are very specific. This is a generic example.
-                            // The memo tells the DEX what to do. e.g., swap for a minimum amount of another token.
                             memo: `exchange:${token.contract}:${tokenAmount.toFixed(token.precision)} ${token.symbol}`,
                         },
                     };
@@ -470,13 +509,12 @@
                             from: this.state.session.actor,
                             to: this.config.dexes[sellDex].contract,
                             quantity: `${tokenAmount.toFixed(token.precision)} ${token.symbol}`,
-                            // The memo for the sell side tells the DEX to swap back to WAX.
                             memo: `exchange:eosio.token:${minWaxReturn.toFixed(8)} WAX`,
                         }
                     };
 
                     this.log('Combining actions into a single transaction...', 'trade');
-                    this.log('NOTE: This atomic transaction will likely fail on-chain. The second action (sell) will execute before your account has received the tokens from the first action (buy). True on-chain arbitrage typically requires a custom smart contract.', 'error');
+                    this.log('NOTE: This atomic transaction may fail on-chain if the second action (sell) tries to use tokens that have not yet been credited from the first action (buy). True atomic arbitrage often requires a custom smart contract.', 'error');
                     
                     const result = await this.state.session.transact({
                         actions: [buyAction, sellAction]
