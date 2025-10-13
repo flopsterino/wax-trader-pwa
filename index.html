@@ -3,13 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WAX Arbitrage PWA</title>
-    
-    <!-- PWA Meta Tags -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#1f2937">
-    <meta name="description" content="A PWA for finding arbitrage opportunities on the WAX blockchain between Alcor and TacoSwap.">
+    <title>WAX Arbitrage Bot</title>
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -134,7 +128,8 @@
             elements: {},
 
             // Initialization
-            async init() {
+            init(waxInstance) {
+                this.state.wax = waxInstance;
                 // Get DOM elements
                 this.elements = {
                     loginButton: document.getElementById('login-button'),
@@ -153,30 +148,18 @@
 
                 this.log('Initializing WAX Arbitrage Bot...', 'info');
                 this.addEventListeners();
-                await this.initWaxJSAndAutoLogin();
+                this.handleAutoLogin();
             },
 
-            async initWaxJSAndAutoLogin() {
-                try {
-                    this.log('Setting up WAX connection...', 'info');
-                    // tryAutoLogin: true will attempt to auto-login, and if successful, wax.userAccount will be populated
-                    this.state.wax = new waxjs.WaxJS({
-                        rpcEndpoint: this.config.rpcEndpoint,
-                        tryAutoLogin: true
-                    });
-                    
-                    // Wait a brief moment for the auto-login to process
-                    await new Promise(resolve => setTimeout(resolve, 300));
-
-                    if (this.state.wax.userAccount) {
-                        this.log('Auto-login successful.', 'success');
-                        this.state.userAccount = this.state.wax.userAccount;
-                        await this.onLogin();
-                    } else {
-                        this.log('No previous session. Please click the Login button.', 'info');
-                    }
-                } catch (error) {
-                    this.log(`Failed to initialize WaxJS: ${error.message}`, 'error');
+            handleAutoLogin() {
+                // The waxjs constructor with tryAutoLogin: true already handled the session check.
+                // We just need to check if the userAccount property is now available.
+                if (this.state.wax && this.state.wax.userAccount) {
+                    this.log('Auto-login successful.', 'success');
+                    this.state.userAccount = this.state.wax.userAccount;
+                    this.onLogin();
+                } else {
+                    this.log('No previous session. Please click the Login button.', 'info');
                 }
             },
 
@@ -205,6 +188,11 @@
                     opportunity: 'dark:text-cyan-400 text-cyan-600',
                 };
                 
+                if (!this.elements.logContainer) {
+                    console.error("Log container not found!");
+                    return;
+                }
+
                 const logEntry = document.createElement('div');
                 logEntry.className = colors[type];
                 
@@ -244,9 +232,9 @@
                     this.elements.loginButton.disabled = false;
                     this.elements.loginButton.textContent = 'Login';
                     
-                    if (error.message.includes('User cancelled')) {
+                    if (String(error).includes('User cancelled')) {
                         this.log('Login cancelled by user.', 'info');
-                    } else if (error.message.includes('popup')) {
+                    } else if (String(error).includes('popup')) {
                         this.log('Please allow popups for this site to login.', 'error');
                     }
                 }
@@ -493,15 +481,38 @@
 
         // --- App Initialization ---
         function initializeApp() {
-            // Use DOMContentLoaded to ensure the DOM is fully loaded and parsed.
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', App.init.bind(App));
-            } else {
-                App.init();
-            }
+            let checks = 0;
+            const maxChecks = 100; // Wait for 10 seconds max
+            const checkInterval = setInterval(() => {
+                checks++;
+                if (typeof waxjs !== 'undefined' && waxjs.WaxJS) {
+                    clearInterval(checkInterval);
+                    try {
+                        const wax = new waxjs.WaxJS({
+                            rpcEndpoint: App.config.rpcEndpoint,
+                            tryAutoLogin: true
+                        });
+                        App.init(wax);
+                    } catch (error) {
+                        console.error("Failed to initialize the application:", error);
+                        document.body.innerHTML = '<div style="color: red; padding: 20px;">Critical Error: Could not start the application. See console for details.</div>';
+                    }
+                } else if (checks > maxChecks) {
+                    clearInterval(checkInterval);
+                    const errorMessage = 'ERROR: WaxJS library failed to load. Please check your internet connection or try refreshing the page.';
+                    console.error(errorMessage);
+                    const logContainer = document.getElementById('log-container');
+                    if (logContainer) {
+                         logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
+                    } else {
+                        document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
+                    }
+                }
+            }, 100);
         }
 
-        initializeApp();
+        // Wait for the DOM to be ready before starting the initialization check
+        document.addEventListener('DOMContentLoaded', initializeApp);
 
     </script>
 </body>
