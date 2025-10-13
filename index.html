@@ -26,7 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- WAXJS -->
-    <script src="https://unpkg.com/waxjs@latest/dist/waxjs.js"></script>
+    <script src="https://raw.githubusercontent.com/worldwide-asset-exchange/waxjs/develop/dist-web/waxjs.js"></script>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans antialiased">
     <div id="app" class="container mx-auto p-4 md:p-6 lg:p-8 max-w-4xl">
@@ -477,50 +477,59 @@
         };
 
         // --- App Initialization ---
-        // Instantiate waxjs right away, as shown in the official demo.
-        const wax = new waxjs.WaxJS({
-            rpcEndpoint: App.config.rpcEndpoint
-        });
-
-        // This async function will handle the setup.
-        async function initializeApp() {
-            try {
-                // Explicitly check for an existing session, as recommended by the docs.
-                // This populates wax.userAccount if the user is already logged in.
-                await wax.isAutoLoginAvailable();
-
-                // Now that we've checked for auto-login, initialize the main application logic.
-                App.init(wax);
-
-            } catch (error) {
-                console.error("Failed to initialize the application:", error);
-                const logContainer = document.getElementById('log-container');
-                const errorMessage = 'Critical Error: Could not start the application. See console for details.';
-                // We need to make sure the log container exists before trying to write to it.
-                // A simple check is enough.
-                if (document.readyState === 'complete' || document.readyState !== 'loading') {
-                     if(logContainer) {
+        document.addEventListener('DOMContentLoaded', () => {
+            let checks = 0;
+            const maxChecks = 100; // 10 seconds timeout
+            const checkInterval = setInterval(() => {
+                checks++;
+                // Check if the waxjs object is available on the window
+                if (typeof waxjs !== 'undefined' && waxjs.WaxJS) {
+                    clearInterval(checkInterval);
+                    initializeApp();
+                } else if (checks > maxChecks) {
+                    clearInterval(checkInterval);
+                    console.error("ERROR: WaxJS library failed to load after 10 seconds.");
+                    const logContainer = document.getElementById('log-container');
+                    const errorMessage = 'Critical Error: WaxJS library failed to load. Please check your internet connection and refresh.';
+                     if (logContainer) {
                         logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
                     } else {
                         document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
                     }
-                } else {
-                    // If the DOM isn't ready, wait until it is to show the error.
-                    document.addEventListener('DOMContentLoaded', () => {
-                         if(logContainer) {
-                            logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
-                        } else {
-                            document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
-                        }
+                }
+            }, 100);
+
+            // This async function will handle the setup.
+            async function initializeApp() {
+                try {
+                    // Instantiate waxjs once we know it's loaded.
+                    const wax = new waxjs.WaxJS({
+                        rpcEndpoint: App.config.rpcEndpoint
                     });
+
+                    // Explicitly check for an existing session, as recommended by the docs.
+                    // This populates wax.userAccount if the user is already logged in.
+                    await wax.isAutoLoginAvailable();
+
+                    // Now that we've checked for auto-login, initialize the main application logic.
+                    App.init(wax);
+
+                } catch (error) {
+                    console.error("Failed to initialize the application:", error);
+                    const logContainer = document.getElementById('log-container');
+                    const errorMessage = 'Critical Error: Could not start the application. See console for details.';
+                    if(logContainer) {
+                        logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
+                    } else {
+                        document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
+                    }
                 }
             }
-        }
-
-        // Run the initialization function.
-        initializeApp();
+        });
 
     </script>
 </body>
 </html>
+
+
 
