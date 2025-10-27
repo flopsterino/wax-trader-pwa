@@ -1,543 +1,1348 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WAX Arbitrage Bot</title>
+    <title>WAX TA Trading Bot</title>
+    <script src="https://cdn.jsdelivr.net/gh/flopsterino/WAX-TA_trader@main/waxjs.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-polyfill/7.12.1/polyfill.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/trendyways/trendyways.min.js" defer></script>
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* --- Base Styles --- */
+        :root {
+            --bg-primary: #1a1c23;
+            --bg-secondary: #242731;
+            --bg-tertiary: #3a3f4c;
+            --border-color: #4a5160;
+            --text-primary: #e0e2e8;
+            --text-secondary: #a0a6b3;
+            --text-cyan: #22d3ee;
+            --text-green: #34d399;
+            --text-red: #f87171;
+            --text-yellow: #facc15;
+            --text-blue: #60a5fa;
+            --accent-cyan: #06b6d4;
+            --accent-cyan-hover: #0891b2;
+            --accent-green: #10b981;
+            --accent-green-hover: #059669;
+            --accent-red: #ef4444;
+            --accent-red-hover: #dc2626;
+            --accent-blue: #3b82f6;
+            --accent-blue-hover: #2563eb;
+            --shadow-color: rgba(0, 0, 0, 0.2);
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --font-mono: 'Courier New', Courier, monospace;
+        }
+
+        /* --- Global Resets & Body --- */
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            margin: 0;
+            padding: 1rem;
+            min-height: 100vh;
+        }
+
+        @media (min-width: 768px) {
+            body {
+                padding: 2rem;
+            }
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            text-align: center;
+            margin: 0 0 1rem 0;
+            color: var(--text-cyan);
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0 0 1rem 0;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        /* --- App Structure --- */
+        .app-section {
+            background-color: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px var(--shadow-color);
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            border-left: 4px solid;
+        }
+        .alert-critical {
+            background-color: #450a0a;
+            border-color: var(--text-red);
+            color: #fecaca;
+        }
+        .alert-critical p {
+            margin: 0;
+        }
+        .alert-critical strong {
+            color: white;
+            font-weight: 600;
+        }
+
+        /* --- Forms & Inputs --- */
+        fieldset {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1rem;
+        }
+        legend {
+            padding: 0 0.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 1.1rem;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(1, 1fr);
+            gap: 1rem;
+        }
+        @media (min-width: 768px) {
+            .form-grid-cols-3 {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .form-grid-cols-2 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        label .default-text {
+            font-size: 0.75rem;
+            color: var(--text-cyan);
+            margin-left: 0.25rem;
+        }
+        input[type="text"],
+        input[type="number"],
+        select {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            width: 100%;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            font-size: 0.9rem;
+        }
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.3);
+        }
+        .note {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+
+        /* --- Buttons --- */
+        button {
+            font-weight: 600;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            border: none;
+            transition: background-color 0.2s, opacity 0.2s;
+            width: 100%;
+            font-size: 1rem;
+        }
+        button.primary {
+            background-color: var(--accent-cyan);
+            color: var(--bg-primary);
+        }
+        button.primary:hover {
+            background-color: var(--accent-cyan-hover);
+        }
+        button.secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            width: auto;
+            font-size: 0.8rem;
+            font-weight: 500;
+            padding: 0.25rem 0.75rem;
+        }
+        button.secondary:hover {
+            background-color: var(--border-color);
+        }
+        button.verify {
+            background-color: var(--accent-blue);
+            color: white;
+            margin-top: 1rem;
+        }
+        button.verify:hover {
+            background-color: var(--accent-blue-hover);
+        }
+        button.start {
+            background-color: var(--accent-green);
+            color: white;
+        }
+        button.start:hover {
+            background-color: var(--accent-green-hover);
+        }
+        button.stop {
+            background-color: var(--accent-red);
+            color: white;
+        }
+        button.stop:hover {
+            background-color: var(--accent-red-hover);
+        }
+        button:disabled {
+            background-color: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .button-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        /* --- Status & Log --- */
+        .status-grid {
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-item .label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        .status-item .value {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        .status-item .value-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        #user-account { color: var(--text-green); }
+        #pnl-display.positive { color: var(--text-green); }
+        #pnl-display.negative { color: var(--text-red); }
+        #pnl-display.neutral { color: var(--text-secondary); }
+        .bot-status-container {
+            text-align: center;
+        }
+        #bot-status {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        #bot-status.running { color: var(--text-green); }
+        #bot-status.stopped { color: var(--text-red); }
+        #market-status {
+            text-align: center;
+            font-size: 0.875rem;
+            margin-top: 0.75rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+            display: none; /* Hidden by default */
+        }
+        #market-status.visible {
+            display: block;
+        }
+        #market-status.success { background-color: rgba(52, 211, 153, 0.1); color: var(--text-green); }
+        #market-status.error { background-color: rgba(248, 113, 113, 0.1); color: var(--text-red); }
+        #market-status.pending { background-color: rgba(250, 204, 21, 0.1); color: var(--text-yellow); }
+
+        /* --- Log Output --- */
+        #log-output {
+            font-family: var(--font-mono);
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: var(--bg-primary); /* Darker than section */
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+        #log-output p {
+            margin: 0 0 0.35rem 0;
+            border-bottom: 1px solid var(--bg-tertiary);
+            padding-bottom: 0.35rem;
+            word-break: break-all;
+            line-height: 1.6;
+        }
+        #log-output p:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        #log-output .log-time { color: var(--text-secondary); margin-right: 0.5rem; }
+        #log-output .log-info { color: var(--text-primary); }
+        #log-output .log-error { color: var(--text-red); }
+        #log-output .log-success { color: var(--text-green); }
+        #log-output .log-warn { color: var(--text-yellow); }
+        #log-output .log-system { color: var(--text-cyan); }
+        #log-output .log-idle { color: var(--text-secondary); }
+
+        /* --- Strategy Settings --- */
+        .strategy-settings.hidden {
+            display: none;
+        }
+        hr {
+            border: none;
+            border-top: 1px solid var(--border-color);
+            margin: 1.5rem 0;
+        }
+
+        /* --- Modal --- */
+        .modal-overlay {
+            display: none; /* Changed from hidden */
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.75);
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            padding: 1rem;
+        }
+        .modal-overlay.visible {
+            display: flex;
+        }
+        .modal-content {
+            background-color: var(--bg-secondary);
+            width: 100%;
+            max-width: 500px;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px var(--shadow-color);
+            position: relative;
+        }
+        .modal-close-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 1.25rem;
+            color: var(--text-secondary);
+            font-size: 2.5rem;
+            font-weight: 300;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            width: auto;
+            line-height: 1;
+        }
+        .modal-close-btn:hover {
+            color: var(--text-primary);
+        }
+        .modal-content h2 {
+            text-align: center;
+            color: var(--text-cyan);
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+            border: none;
+        }
+        .modal-summary {
+            background-color: var(--bg-tertiary);
+            padding: 1.5rem;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .modal-summary-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-summary-item .label {
+            color: var(--text-secondary);
+        }
+        .modal-summary-item .value {
+            font-weight: 600;
+        }
+        #share-wallet { color: var(--text-cyan); }
+        #share-spent { color: var(--text-red); }
+        #share-received { color: var(--text-green); }
+        .modal-summary hr {
+            margin: 0.5rem 0;
+        }
+        .modal-summary-total {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        #share-pnl.positive { color: var(--text-green); }
+        #share-pnl.negative { color: var(--text-red); }
+        #share-pnl.neutral { color: var(--text-secondary); }
+
+        #copy-share-btn {
+            background-color: var(--accent-cyan);
+            color: var(--bg-primary);
+        }
+        #copy-share-btn:hover {
+            background-color: var(--accent-cyan-hover);
+        }
+        #share-text {
+            position: absolute;
+            left: -9999px;
+            opacity: 0;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>WAX TA Trading Bot</h1>
+
+        <div class="alert alert-critical" role="alert">
+            <p><strong>High Risk: Use at Your Own Risk</strong></p>
+            <p>This is an educational tool. Automated trading is extremely risky and can lead to a total loss of funds. You are solely responsible for your actions. A 0.1% fee on all sell trades is sent to `qu.ug.wam`.</p>
+        </div>
+
+        <div class="app-section">
+            <h2>Step 1: Connect & Status</h2>
+            <button id="login-btn" class="primary">
+                Login with WAX Wallet
+            </button>
+            <div class="status-grid">
+                <div class="status-item">
+                    <span class="label">Wallet:</span>
+                    <strong id="user-account" class="value">Not Logged In</strong>
+                </div>
+                <div class="status-item">
+                    <span class="label">Your PnL:</span>
+                    <div class="value-group">
+                        <span id="pnl-display" class="value neutral">0.00</span>
+                        <button id="share-pnl-btn" class="secondary">Share</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-section">
+            <h2>Step 2: Configure Tokens</h2>
+            
+            <fieldset>
+                <legend>Token A (The token you want to trade)</legend>
+                <div class="form-grid form-grid-cols-3">
+                    <div class="form-group">
+                        <label for="token-a-symbol">Symbol</label>
+                        <input type="text" id="token-a-symbol" placeholder="e.g., TLM">
+                    </div>
+                    <div class="form-group">
+                        <label for="token-a-contract">Contract</label>
+                        <input type="text" id="token-a-contract" placeholder="e.g., alien.worlds">
+                    </div>
+                    <div class="form-group">
+                        <label for="token-a-decimals">Decimals</label>
+                        <input type="number" id="token-a-decimals" value="4">
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Token B (e.g., Bridged USDC)</legend>
+                <div class="form-grid form-grid-cols-3">
+                    <div class="form-group">
+                        <label for="token-b-symbol">Symbol</label>
+                        <input type="text" id="token-b-symbol" placeholder="e.g., WAXUSDC">
+                    </div>
+                    <div class="form-group">
+                        <label for="token-b-contract">Contract</label>
+                        <input type="text" id="token-b-contract" placeholder="e.g., usdc.token">
+                    </div>
+                    <div class="form-group">
+                        <label for="token-b-decimals">Decimals</label>
+                        <input type="number" id="token-b-decimals" value="6">
+                    </div>
+                </div>
+            </fieldset>
+
+            <button id="verify-market-btn" class="verify">
+                Verify Market
+            </button>
+            <p id="market-status"></p>
+        </div>
+        
+        <div class="app-section">
+            <h2>Step 3: Define Strategy</h2>
+            
+            <div class="form-grid form-grid-cols-2">
+                <div class="form-group">
+                    <label for="strategy-select">Trading Strategy</label>
+                    <select id="strategy-select">
+                        <option value="rsi">RSI Strategy (Default)</option>
+                        <option value="price-range">Price Range Strategy</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="timeframe-select">Chart Timeframe</label>
+                    <select id="timeframe-select">
+                        <option value="1">1 Minute</option>
+                        <option value="5">5 Minutes</option>
+                        <option value="15">15 Minutes</option>
+                        <option value="30">30 Minutes</option>
+                        <option value="60" selected>1 Hour</option>
+                        <option value="240">4 Hours</option>
+                        <option value="1440">1 Day</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="rsi-settings" class="strategy-settings form-grid form-grid-cols-2" style="margin-top: 1rem;">
+                <div class="form-group">
+                    <label for="rsi-buy">
+                        Buy Token A when 14-period RSI is below:
+                        <span class="default-text">(Default: 30)</span>
+                    </label>
+                    <input type="number" id="rsi-buy" value="30">
+                </div>
+                <div class="form-group">
+                    <label for="rsi-sell">
+                        Sell Token A when 14-period RSI is above:
+                        <span class="default-text">(Default: 70)</span>
+                    </label>
+                    <input type="number" id="rsi-sell" value="70">
+                </div>
+            </div>
+
+            <div id="price-range-settings" class="strategy-settings hidden form-grid form-grid-cols-2" style="margin-top: 1rem;">
+                <div class="form-group">
+                    <label for="price-lower">
+                        Lower Buy Price (in Token B)
+                    </label>
+                    <input type="number" id="price-lower" placeholder="e.g., 0.05">
+                </div>
+                <div class="form-group">
+                    <label for="price-upper">
+                        Upper Sell Price (in Token B)
+                    </label>
+                    <input type="number" id="price-upper" placeholder="e.g., 0.10">
+                </div>
+            </div>
+
+            <hr>
+            <div class="form-grid form-grid-cols-2">
+                <div class="form-group">
+                    <label for="trade-amount-a">Amount of Token A to SELL:</label>
+                    <input type="number" id="trade-amount-a" value="100">
+                </div>
+                <div class="form-group">
+                    <label for="trade-amount-b">Amount of Token B to spend on BUY:</label>
+                    <input type="number" id="trade-amount-b" value="10">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 1rem;">
+                <label for="dex-contract">DEX Router Contract (Alcor is default)</label>
+                <input type="text" id="dex-contract" value="alcor.swap">
+                <p class="note">
+                    Note: The <code>alcor.swap</code> router automatically uses both Liquidity Pools (LPs) and the spot market to find the best trade price.
+                </p>
+            </div>
+        </div>
+
+        <div class="app-section">
+            <h2>Step 4: Control Panel</h2>
+            <div class="button-grid">
+                <button id="start-btn" class="start">
+                    Start Bot
+                </button>
+                <button id="stop-btn" class="stop" disabled>
+                    Stop Bot
+                </button>
+            </div>
+            <div class="bot-status-container">
+                <span style="color: var(--text-secondary);">Status:</span>
+                <strong id="bot-status" class="stopped">STOPPED</strong>
+            </div>
+        </div>
+
+        <div class="app-section">
+            <h2>Bot Log</h2>
+            <div id="log-output">
+                <p class="log-idle">Bot is idle. Please log in, configure settings, and press Start.</p>
+            </div>
+        </div>
+
+    </div> <div id="share-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button id="close-share-modal-btn" class="modal-close-btn">&times;</button>
+            <h2>My Trading Bot PnL</h2>
+            
+            <div class="modal-summary">
+                <div class="modal-summary-item">
+                    <span class="label">Wallet:</span>
+                    <span id="share-wallet" class="value">...</span>
+                </div>
+                <div class="modal-summary-item">
+                    <span class="label">Total Spent (B):</span>
+                    <span id="share-spent" class="value">0.00</span>
+                </div>
+                <div class="modal-summary-item">
+                    <span class="label">Total Received (B):</span>
+                    <span id="share-received" class="value">0.00</span>
+                </div>
+                <hr>
+                <div class="modal-summary-item modal-summary-total">
+                    <span class="label">Net PnL:</span>
+                    <span id="share-pnl" class="value neutral">0.00</span>
+                </div>
+            </div>
+
+            <textarea id="share-text"></textarea> <button id="copy-share-btn">
+                Copy Sharable Text
+            </button>
+        </div>
+    </div>
+
+
     <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
+        // --- Global Variables ---
+        let wax;
+        let userAccount = null;
+        let botInterval = null;
+        let isBotRunning = false;
+        let lastPrices = []; // Store prices for PnL estimation
+        let pnlData = { totalSpentTokenB: 0, totalReceivedTokenB: 0, pnl: 0 };
+        
+        let marketId = null; // Will be fetched from API (numeric)
+        let tickerId = null; // Will be fetched from API (string, e.g., "tlm-alien.worlds_wax-eosio.token")
+        let marketConfig = { baseContract: null, quoteContract: null }; // To check for inverted price
+        
+        let tw = null; // This will be our new library (trendyways)
+        
+        const WAX_RPC_ENDPOINT = 'https://wax.greymass.com';
+        const FEE_RECEIVER = 'qu.ug.wam';
+        const FEE_PERCENT = 0.001; // 0.1%
+        const ALCOR_API = 'https://wax.alcor.exchange/api/v2';
+
+
+        // --- DOM Elements (to be assigned in init) ---
+        let loginBtn, userAccountDisplay, startBtn, stopBtn, botStatusDisplay, logOutput, pnlDisplay;
+        let shareModal, sharePnlBtn, closeShareModalBtn, shareWallet, shareSpent, shareReceived, sharePnl, copyShareBtn, shareText;
+        let tokenASymbol, tokenAContract, tokenADecimals, tokenBSymbol, tokenBContract, tokenBDecimals, verifyMarketBtn, marketStatus;
+        let timeframeSelect, dexContract, tradeAmountA, tradeAmountB;
+        let strategySelect, rsiSettings, priceRangeSettings, rsiBuy, rsiSell, priceLower, priceUpper;
+
+        /**
+         * Assigns all DOM elements to variables
+         */
+        function assignDomElements() {
+            loginBtn = document.getElementById('login-btn');
+            userAccountDisplay = document.getElementById('user-account');
+            startBtn = document.getElementById('start-btn');
+            stopBtn = document.getElementById('stop-btn');
+            botStatusDisplay = document.getElementById('bot-status');
+            logOutput = document.getElementById('log-output');
+            pnlDisplay = document.getElementById('pnl-display');
+            
+            shareModal = document.getElementById('share-modal');
+            sharePnlBtn = document.getElementById('share-pnl-btn');
+            closeShareModalBtn = document.getElementById('close-share-modal-btn');
+            shareWallet = document.getElementById('share-wallet');
+            shareSpent = document.getElementById('share-spent');
+            shareReceived = document.getElementById('share-received');
+            sharePnl = document.getElementById('share-pnl');
+            copyShareBtn = document.getElementById('copy-share-btn');
+            shareText = document.getElementById('share-text');
+
+            tokenASymbol = document.getElementById('token-a-symbol');
+            tokenAContract = document.getElementById('token-a-contract');
+            tokenADecimals = document.getElementById('token-a-decimals');
+            tokenBSymbol = document.getElementById('token-b-symbol');
+            tokenBContract = document.getElementById('token-b-contract');
+            tokenBDecimals = document.getElementById('token-b-decimals');
+            verifyMarketBtn = document.getElementById('verify-market-btn');
+            marketStatus = document.getElementById('market-status');
+            timeframeSelect = document.getElementById('timeframe-select');
+            dexContract = document.getElementById('dex-contract');
+            tradeAmountA = document.getElementById('trade-amount-a');
+            tradeAmountB = document.getElementById('trade-amount-b');
+
+            strategySelect = document.getElementById('strategy-select');
+            rsiSettings = document.getElementById('rsi-settings');
+            priceRangeSettings = document.getElementById('price-range-settings');
+            rsiBuy = document.getElementById('rsi-buy');
+            rsiSell = document.getElementById('rsi-sell');
+            priceLower = document.getElementById('price-lower');
+            priceUpper = document.getElementById('price-upper');
+        }
+
+
+        // --- PnL Functions ---
+
+        /**
+         * Loads PnL data from localStorage
+         */
+        function loadPnlFromStorage() {
+            const savedData = localStorage.getItem('waxTraderPnl');
+            if (savedData) {
+                pnlData = JSON.parse(savedData);
+                logMessage("Loaded PnL data from storage.", "system");
+            } else {
+                logMessage("No PnL data found, starting fresh.", "system");
+            }
+            updatePnlDisplay();
+        }
+
+        /**
+         * Saves PnL data to localStorage
+         */
+        function savePnlToStorage() {
+            localStorage.setItem('waxTraderPnl', JSON.stringify(pnlData));
+        }
+
+        /**
+         * Updates PnL data and saves to localStorage
+         */
+        function updatePnl(direction, amountB) {
+            if (direction === 'buy') {
+                pnlData.totalSpentTokenB += amountB;
+            } else if (direction === 'sell') {
+                pnlData.totalReceivedTokenB += amountB;
+            }
+            pnlData.pnl = pnlData.totalReceivedTokenB - pnlData.totalSpentTokenB;
+
+            savePnlToStorage();
+            updatePnlDisplay();
+            logMessage(`PnL updated: ${pnlData.pnl.toFixed(4)}`, "success");
+        }
+
+        /**
+         * Updates the PnL text in the UI
+         */
+        function updatePnlDisplay() {
+            const pnlValue = pnlData.pnl || 0;
+            const tokenSymbol = tokenBSymbol.value.trim().toUpperCase() || 'Token B';
+            
+            pnlDisplay.textContent = `${pnlValue.toFixed(4)} ${tokenSymbol}`;
+            if (pnlValue > 0) {
+                pnlDisplay.className = "value positive";
+            } else if (pnlValue < 0) {
+                pnlDisplay.className = "value negative";
+            } else {
+                pnlDisplay.className = "value neutral";
+            }
+        }
+
+        // --- Share Modal Functions ---
+        
+        function openShareModal() {
+            const tokenSymbol = tokenBSymbol.value.trim().toUpperCase() || 'Token B';
+            const pnlValue = pnlData.pnl || 0;
+            
+            // Update modal content
+            shareWallet.textContent = userAccount || 'N/A';
+            shareSpent.textContent = `${pnlData.totalSpentTokenB.toFixed(4)} ${tokenSymbol}`;
+            shareReceived.textContent = `${pnlData.totalReceivedTokenB.toFixed(4)} ${tokenSymbol}`;
+            sharePnl.textContent = `${pnlValue.toFixed(4)} ${tokenSymbol}`;
+            
+            if (pnlValue > 0) {
+                sharePnl.className = "value positive";
+            } else if (pnlValue < 0) {
+                sharePnl.className = "value negative";
+            } else {
+                sharePnl.className = "value neutral";
+            }
+            
+            // Prepare text for copying
+            const textToCopy = `
+📈 My WAX TA Bot Report 📈
+-------------------------
+Wallet: ${userAccount}
+Net PnL: ${pnlValue.toFixed(4)} ${tokenSymbol}
+(Spent: ${pnlData.totalSpentTokenB.toFixed(4)} | Received: ${pnlData.totalReceivedTokenB.toFixed(4)})
+-------------------------
+Bot by: qu.ug.wam
+            `;
+            shareText.value = textToCopy.trim(); // Set for copy button
+            
+            shareModal.classList.add('visible');
+        }
+
+        function closeShareModal() {
+            shareModal.classList.remove('visible');
+        }
+
+        function copyShareText() {
+            // Use execCommand for broader compatibility in iframes
+            shareText.select();
+            shareText.setSelectionRange(0, 99999); // For mobile
+            try {
+                document.execCommand('copy');
+                copyShareBtn.textContent = 'Copied!';
+                setTimeout(() => { copyShareBtn.textContent = 'Copy Sharable Text'; }, 2000);
+            } catch (err) {
+                logMessage('Failed to copy share text.', 'error');
+            }
+        }
+
+        // --- Core Functions ---
+
+        /**
+         * Logs a message to the UI
+         */
+        function logMessage(message, level = "info") {
+            if (!logOutput) { // Handle logs before DOM is ready
+                console.log(`[${level.toUpperCase()}] ${message}`);
+                return;
+            }
+            const p = document.createElement('p');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            let levelClass = "log-info";
+            if (level === "error") levelClass = "log-error";
+            if (level === "success") levelClass = "log-success";
+            if (level === "warn") levelClass = "log-warn";
+            if (level === "system") levelClass = "log-system";
+
+            p.className = levelClass;
+            p.innerHTML = `<span class="log-time">[${timestamp}]</span> ${message}`;
+            
+            const placeholder = logOutput.querySelector('.log-idle');
+            if (placeholder) placeholder.remove();
+
+            logOutput.prepend(p);
+        }
+
+        /**
+         * Toggles the strategy settings visibility
+         */
+        function toggleStrategySettings() {
+            const selectedStrategy = strategySelect.value;
+            if (selectedStrategy === 'rsi') {
+                rsiSettings.classList.remove('hidden');
+                priceRangeSettings.classList.add('hidden');
+            } else if (selectedStrategy === 'price-range') {
+                rsiSettings.classList.add('hidden');
+                priceRangeSettings.classList.remove('hidden');
+            }
+        }
+
+        /**
+         * Initializes the app on window load
+         */
+        window.addEventListener('load', () => {
+            // 0. Assign all DOM elements
+            assignDomElements();
+
+            // Check if libraries loaded
+            if (typeof waxjs === 'undefined') {
+                logMessage("FATAL: waxjs library failed to load. Check script tag.", "error");
+                return;
+            }
+            
+            if (typeof tw === 'undefined') {
+                logMessage("FATAL: trendyways library (tw) failed to load.", "error");
+                return;
+            }
+            // 'tw' is already globally available, no need to assign it
+
+            // 1. Initialize waxjs
+            wax = new waxjs.WaxJS({
+                rpcEndpoint: WAX_RPC_ENDPOINT,
+                tryAutoLogin: false
+            });
+
+            // 2. Load PnL from storage
+            loadPnlFromStorage();
+
+            // 3. Add Event Listeners
+            loginBtn.addEventListener('click', login);
+            verifyMarketBtn.addEventListener('click', fetchAndSetMarketId);
+            startBtn.addEventListener('click', startBot);
+            stopBtn.addEventListener('click', stopBot);
+            sharePnlBtn.addEventListener('click', openShareModal);
+            closeShareModalBtn.addEventListener('click', closeShareModal);
+            copyShareBtn.addEventListener('click', copyShareText);
+            strategySelect.addEventListener('change', toggleStrategySettings);
+            
+            // Close modal on outside click
+            shareModal.addEventListener('click', (e) => {
+                if (e.target === shareModal) {
+                    closeShareModal();
                 }
+            });
+
+            logMessage("App initialized. Please log in.", "system");
+        
+            // Set initial strategy visibility
+            toggleStrategySettings();
+        });
+
+        /**
+         * Handles WAX Wallet Login
+         */
+        async function login() {
+            try {
+                logMessage("Attempting login...", "system");
+                userAccount = await wax.login();
+                userAccountDisplay.textContent = userAccount;
+                loginBtn.disabled = true;
+                loginBtn.textContent = "Logged In";
+                logMessage(`Logged in as: ${userAccount}`, "success");
+            } catch (e) {
+                logMessage(`Login failed: ${e.message}`, "error");
+            }
+        }
+
+        /**
+         * Fetches all markets from Alcor and finds the market ID for the selected pair
+         */
+        async function fetchAndSetMarketId() {
+            // FIX: Get all inputs required to build the ticker_id
+            const tokenASym = tokenASymbol.value.trim().toLowerCase();
+            const tokenACon = tokenAContract.value.trim().toLowerCase();
+            const tokenBSym = tokenBSymbol.value.trim().toLowerCase();
+            const tokenBCon = tokenBContract.value.trim().toLowerCase();
+            
+            if (!tokenASym || !tokenACon || !tokenBSym || !tokenBCon) {
+                logMessage("All Token Symbol and Contract fields must be filled.", "error");
+                return false;
+            }
+            
+            // Construct the IDs to search for, e.g., "tlm-alien.worlds"
+            const id_A = `${tokenASym}-${tokenACon}`;
+            const id_B = `${tokenBSym}-${tokenBCon}`;
+
+            logMessage("Finding market ID for selected token pair...", "system");
+            marketStatus.classList.add('visible');
+            marketStatus.className = "pending visible";
+            marketStatus.textContent = "Verifying market...";
+            
+            try {
+                // FIX: Fetch from the /tickers endpoint
+                const url = `${ALCOR_API}/tickers`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}.`);
+                }
+                
+                const tickers = await response.json();
+                
+                // FIX: Find the market by matching base_currency and target_currency
+                const foundMarket = tickers.find(m =>
+                    (m.base_currency === id_A && m.target_currency === id_B) ||
+                    (m.base_currency === id_B && m.target_currency === id_A)
+                );
+
+                if (foundMarket) {
+                    // Store BOTH the numeric market_id and the string ticker_id
+                    marketId = foundMarket.market_id; 
+                    tickerId = foundMarket.ticker_id; 
+                    
+                    // Store contract names for inversion check
+                    // We split "tlm-alien.worlds" into "tlm" and "alien.worlds" and take the contract
+                    marketConfig.baseContract = foundMarket.base_currency.split('-')[1];
+                    marketConfig.quoteContract = foundMarket.target_currency.split('-')[1];
+                    
+                    const msg = `Market found! Ticker ID: ${tickerId} (Market ID: ${marketId})`;
+                    logMessage(msg, "success");
+                    marketStatus.className = "success visible";
+                    marketStatus.textContent = `✅ Market Found (${tickerId})`;
+                    return true;
+                } else {
+                    marketId = null;
+                    tickerId = null;
+                    logMessage(`No market found for the pair ${id_A} / ${id_B}. Check contracts and symbols.`, "error");
+                    marketStatus.className = "error visible";
+                    marketStatus.textContent = "❌ No Market Found. Check contracts/symbols.";
+                    return false;
+                }
+            } catch (e) {
+                marketId = null;
+                tickerId = null;
+                logMessage(`Error fetching market ID: ${e.message}`, "error");
+                marketStatus.className = "error visible";
+                marketStatus.textContent = "❌ Error verifying market. See log.";
+                return false;
+            }
+        }
+
+
+        /**
+         * Starts the trading bot
+         */
+        async function startBot() {
+            if (!userAccount) {
+                logMessage("Please log in before starting the bot.", "error");
+                return;
+            }
+            if (isBotRunning) return;
+
+            // --- Check for Market ID ---
+            // FIX: Check for tickerId, which is what we need for price history
+            if (!tickerId) {
+                logMessage("Market not verified. Verifying now...", "system");
+                const marketFound = await fetchAndSetMarketId();
+                if (!marketFound) {
+                    logMessage("Bot cannot start without a valid market.", "error");
+                    return;
+                }
+            }
+            // --- End Check ---
+
+            isBotRunning = true;
+            botStatusDisplay.textContent = "RUNNING";
+            botStatusDisplay.className = "running";
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            verifyMarketBtn.disabled = true; // Disable verify button while running
+            
+            logMessage("Bot started! Running first check...", "system");
+            
+            runBotLogic();
+            const checkInterval = parseInt(timeframeSelect.value) * 60 * 1000;
+            botInterval = setInterval(runBotLogic, Math.max(60000, checkInterval)); // At least 60s
+        }
+
+        /**
+         * Stops the trading bot
+         */
+        function stopBot() {
+            if (!isBotRunning) return;
+
+            isBotRunning = false;
+            clearInterval(botInterval);
+            marketId = null; // Clear the market ID
+            tickerId = null; // Clear the ticker ID
+            marketConfig = { baseContract: null, quoteContract: null };
+            marketStatus.classList.remove('visible'); // Hide status
+            marketStatus.textContent = "";
+            botStatusDisplay.textContent = "STOPPED";
+            botStatusDisplay.className = "stopped";
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            verifyMarketBtn.disabled = false; // Re-enable verify button
+            logMessage("Bot stopped.", "system");
+        }
+
+        /**
+         * The main logic loop for the bot
+         */
+        async function runBotLogic() {
+            if (!isBotRunning) return;
+            logMessage("Running strategy check...", "info");
+
+            try {
+                // 1. Get Price History
+                const prices = await getPriceHistory();
+                if (!prices || prices.length < 1) {
+                    logMessage("No price data available.", "warn");
+                    return;
+                }
+                lastPrices = prices; // Save for PnL
+                
+                // 2. Get current state
+                const selectedStrategy = strategySelect.value;
+                // Prices are now always "Price of Token A in terms of Token B"
+                const currentPrice = prices[prices.length - 1].close; 
+                logMessage(`Current price: 1 ${tokenASymbol.value.trim().toUpperCase()} = ${currentPrice.toFixed(8)} ${tokenBSymbol.value.trim().toUpperCase()}`, "info");
+
+                // 3. Run selected strategy
+                if (selectedStrategy === 'rsi') {
+                    if (prices.length < 14) {
+                        logMessage("Not enough price data for RSI (need 14 periods).", "warn");
+                        return;
+                    }
+                    
+                    // Calculate RSI
+                    const closePrices = prices.map(p => p.close);
+                    // trendyways.rsi() returns an array of RSI values.
+                    const rsiValues = tw.rsi(closePrices, 14); // Simpler syntax: (data, period)
+                    const currentRSI = rsiValues[rsiValues.length - 1];
+                    logMessage(`Current RSI: ${currentRSI.toFixed(2)}`, "info");
+
+
+                    // Check RSI Triggers
+                    const buyLevel = parseFloat(rsiBuy.value);
+                    const sellLevel = parseFloat(rsiSell.value);
+
+                    if (currentRSI <= buyLevel) {
+                        logMessage(`RSI BUY TRIGGER! RSI (${currentRSI.toFixed(2)}) is <= ${buyLevel}.`, "success");
+                        await executeSwap('buy');
+                    } else if (currentRSI >= sellLevel) {
+                        logMessage(`RSI SELL TRIGGER! RSI (${currentRSI.toFixed(2)}) is >= ${sellLevel}.`, "success");
+                        await executeSwap('sell');
+                    } else {
+                        logMessage(`RSI: No trigger. RSI is between ${buyLevel} and ${sellLevel}.`, "info");
+                    }
+                
+                } else if (selectedStrategy === 'price-range') {
+                    // Check Price Range Triggers
+                    const lowerBuyPrice = parseFloat(priceLower.value);
+                    const upperSellPrice = parseFloat(priceUpper.value);
+
+                    if (!lowerBuyPrice || !upperSellPrice) {
+                        logMessage("Price Range: Please set a lower and upper price.", "warn");
+                        return;
+                    }
+
+                    if (currentPrice <= lowerBuyPrice) {
+                        logMessage(`PRICE BUY TRIGGER! Price (${currentPrice.toFixed(8)}) is <= ${lowerBuyPrice}.`, "success");
+                        await executeSwap('buy');
+                    } else if (currentPrice >= upperSellPrice) {
+                        logMessage(`PRICE SELL TRIGGER! Price (${currentPrice.toFixed(8)}) is >= ${upperSellPrice}.`, "success");
+                        await executeSwap('sell');
+                    } else {
+                        logMessage(`Price Range: No trigger. Price is between ${lowerBuyPrice} and ${upperSellPrice}.`, "info");
+                    }
+                }
+
+            } catch (e) {
+                logMessage(`Error in bot logic: ${e.message}`, "error");
+            }
+        }
+
+        /**
+         * Gets price history from Alcor API
+         */
+        async function getPriceHistory() {
+            // FIX: This function now relies on tickerId (string)
+            const timeframe = timeframeSelect.value;
+            if (!tickerId || !timeframe) {
+                throw new Error("Ticker ID and Timeframe are required.");
+            }
+
+            // FIX: Timestamps must be in MILLISECONDS for this endpoint
+            const now = Date.now();
+            const from = now - (60 * parseInt(timeframe) * 200 * 1000); // Get 200 periods, in ms
+
+            // FIX: Resolution '1440' (minutes) must be '1D' (day)
+            let resolution = timeframe;
+            if (resolution === '1440') {
+                resolution = '1D';
+            }
+            
+            // FIX: Switched to the correct /tickers/:ticker_id/charts endpoint
+            const apiUrl = `${ALCOR_API}/tickers/${tickerId}/charts?resolution=${resolution}&from=${from}&to=${now}`;
+            const url = apiUrl;
+
+            logMessage(`Fetching prices for ${tickerId} (TF: ${resolution})...`, "system");
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}.`);
+                }
+                const data = await response.json();
+                if (!data || data.length === 0) {
+                    throw new Error("No price data returned from Alcor.");
+                }
+                
+                // Check if market is inverted (Price of B in terms of A)
+                // This logic remains the same and should work
+                const isInverted = marketConfig.baseContract === tokenBContract.value.trim();
+                if (isInverted) {
+                    logMessage("Market is inverted. Inverting prices for calculation.", "system");
+                    // Invert prices to get Price of A in terms of B
+                    return data.map(d => ({
+                        time: d.time,
+                        open: 1 / d.open,
+                        high: 1 / d.low, // In an inverse, high becomes low
+                        low: 1 / d.high, // and low becomes high
+                        close: 1 / d.close,
+                        volume: d.volume * d.close // Estimate volume in Token A
+                    })).filter(d => d.open && d.high && d.low && d.close); // Filter out any NaN/Infinity
+                }
+                
+                // Format data for TA library (market is not inverted)
+                return data.map(d => ({
+                    time: d.time,
+                    open: d.open,
+                    high: d.high,
+                    low: d.low,
+                    close: d.close,
+                    volume: d.volume
+                }));
+            } catch (e) {
+                logMessage(`Failed to get prices: ${e.message}`, "error");
+                return null;
+            }
+        }
+
+        /**
+         * Executes the swap transaction on Alcor
+         */
+        async function executeSwap(direction) {
+            logMessage(`Attempting to execute ${direction.toUpperCase()} swap...`, "system");
+
+            try {
+                const config = {
+                    aSymbol: tokenASymbol.value.trim().toUpperCase(),
+                    aContract: tokenAContract.value.trim(),
+                    aDecimals: parseInt(tokenADecimals.value),
+                    bSymbol: tokenBSymbol.value.trim().toUpperCase(),
+                    bContract: tokenBContract.value.trim(),
+                    bDecimals: parseInt(tokenBDecimals.value),
+                    dex: dexContract.value.trim(),
+                    amountA: parseFloat(tradeAmountA.value),
+                    amountB: parseFloat(tradeAmountB.value)
+                };
+
+                if (!config.aSymbol || !config.aContract || !config.bSymbol || !config.bContract) {
+                    logMessage("Token Symbol and Contract fields must be filled out.", "error");
+                    return;
+                }
+                if (isNaN(config.aDecimals) || isNaN(config.bDecimals)) {
+                    logMessage("Token decimals must be valid numbers.", "error");
+                    return;
+                }
+                if (isNaN(config.amountA) || isNaN(config.amountB) || config.amountA <= 0 || config.amountB <= 0) {
+                    logMessage("Trade amounts must be valid, positive numbers.", "error");
+                    return;
+                }
+
+                let actions = [];
+
+                if (direction === 'sell') {
+                    // SELLING Token A to get Token B
+                    const totalSellAmount = config.amountA;
+                    const feeAmount = totalSellAmount * FEE_PERCENT;
+                    const userAmount = totalSellAmount - feeAmount;
+
+                    if (userAmount <= 0) {
+                        logMessage("Sell amount too small to cover fee.", "error");
+                        return;
+                    }
+
+                    // 1. User's trade
+                    const userQuantity = `${userAmount.toFixed(config.aDecimals)} ${config.aSymbol}`;
+                    const minReturnUser = (0).toFixed(config.bDecimals);
+                    const memoUser = `swap,${minReturnUser} ${config.bSymbol},${config.bContract}`;
+                    
+                    actions.push({
+                        account: config.aContract,
+                        name: 'transfer',
+                        authorization: [{ actor: userAccount, permission: 'active' }],
+                        data: {
+                            from: userAccount,
+                            to: config.dex,
+                            quantity: userQuantity,
+                            memo: memoUser,
+                        },
+                    });
+                    
+                    // 2. Fee transfer
+                    const feeQuantity = `${feeAmount.toFixed(config.aDecimals)} ${config.aSymbol}`;
+                    if (feeAmount > 0) {
+                        actions.push({
+                            account: config.aContract,
+                            name: 'transfer',
+                            authorization: [{ actor: userAccount, permission: 'active' }],
+                            data: {
+                                from: userAccount,
+                                to: FEE_RECEIVER,
+                                quantity: feeQuantity,
+                                memo: `0.1% fee from WAX TA Trader`,
+                            },
+                        });
+                        logMessage(`ACTION (Fee): Transfer ${feeQuantity} to ${FEE_RECEIVER}`, "info");
+                    }
+                    
+                    logMessage(`ACTION (User): Transfer ${userQuantity} to ${config.dex}`, "info");
+
+                } else if (direction === 'buy') {
+                    // BUYING Token A by spending Token B
+                    const quantity = `${config.amountB.toFixed(config.bDecimals)} ${config.bSymbol}`;
+                    const minReturn = (0).toFixed(config.aDecimals);
+                    const memo = `swap,${minReturn} ${config.aSymbol},${config.aContract}`;
+
+                    actions.push({
+                        account: config.bContract,
+                        name: 'transfer',
+                        authorization: [{ actor: userAccount, permission: 'active' }],
+                        data: {
+                            from: userAccount,
+                            to: config.dex,
+                            quantity: quantity,
+                            memo: memo,
+                        },
+                    });
+                    
+                    logMessage(`ACTION: Transfer ${quantity} to ${config.dex}`, "info");
+                    logMessage(`MEMO: ${memo}`, "info");
+                }
+
+                const result = await wax.api.transact({ actions }, {
+                    blocksBehind: 3,
+                    expireSeconds: 1200,
+                });
+
+                logMessage(`Swap successful! TxID: ${result.transaction_id.substring(0, 12)}...`, "success");
+                
+                // --- Update PnL after successful trade ---
+                if (direction === 'buy') {
+                    updatePnl('buy', config.amountB);
+                } else if (direction === 'sell') {
+                    // Estimate received Token B for PnL
+                    if (lastPrices.length > 0) {
+                        const currentPrice = lastPrices[lastPrices.length - 1].close;
+                        const userAmountSold = config.amountA * (1 - FEE_PERCENT);
+                        const estimatedReceivedB = userAmountSold * currentPrice;
+                        
+                        logMessage(`Est. ${estimatedReceivedB.toFixed(config.bDecimals)} ${config.bSymbol} received.`, "info");
+                        updatePnl('sell', estimatedReceivedB);
+                    } else {
+                         logMessage(`Could not estimate PnL for sell trade, no price data available.`, "warn");
+                    }
+                }
+
+            } catch (e) {
+                // Try to parse a more specific error from WAX
+                let errorMessage = e.message;
+                try {
+                    const errorJson = JSON.parse(e.message);
+                    if (errorJson.error && errorJson.error.details && errorJson.error.details.length > 0) {
+                        errorMessage = errorJson.error.details[0].message;
+                    } else if (errorJson.error && errorJson.error.what) {
+                        errorMessage = errorJson.error.what;
+                    }
+                } catch (parseError) {
+                    // It wasn't JSON, just use the original message
+                }
+                logMessage(`Swap failed: ${errorMessage}`, "error");
             }
         }
     </script>
-    
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- WAXJS -->
-    <script src="waxjs.js"></script>
-</head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans antialiased">
-    <div id="app" class="container mx-auto p-4 md:p-6 lg:p-8 max-w-4xl">
-        
-        <!-- Header -->
-        <header class="flex justify-between items-center mb-6">
-            <div class="flex items-center space-x-3">
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-500"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                <h1 class="text-2xl font-bold text-gray-900 dark:text-white">WAX Arbitrage Bot</h1>
-            </div>
-            <div id="auth-container">
-                <button id="login-button" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">
-                    Login
-                </button>
-                <div id="user-info" class="hidden items-center space-x-4">
-                    <div class="text-right">
-                        <p id="account-name" class="font-semibold text-gray-900 dark:text-white"></p>
-                        <p id="wax-balance" class="text-sm text-gray-500 dark:text-gray-400"></p>
-                    </div>
-                    <button id="logout-button" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-bold py-2 px-4 rounded-lg transition">
-                        Logout
-                    </button>
-                </div>
-            </div>
-        </header>
-
-        <!-- Main Content for Logged In Users -->
-        <main id="main-content" class="hidden">
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg mb-6">
-                <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Arbitrage Controls</h2>
-                <div class="grid md:grid-cols-2 gap-6 items-end">
-                    <div>
-                        <label for="trade-amount" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">WAX Amount per Trade</label>
-                        <input type="number" id="trade-amount" value="5" class="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
-                    </div>
-                     <div>
-                        <label for="min-profit" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Min Profit (%)</label>
-                        <input type="number" id="min-profit" value="1.0" step="0.1" class="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
-                    </div>
-
-                    <div class="md:col-span-2">
-                        <button id="update-tokens-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 flex items-center justify-center space-x-2">
-                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18a9 9 0 0 0 9-9M3 12a9 9 0 0 0 9 9"/></svg>
-                            <span>Update Token List</span>
-                        </button>
-                        <p class="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
-                            <span id="token-count">0</span> tokens loaded. Click to refresh from Alcor.
-                        </p>
-                    </div>
-
-
-                    <div class="md:col-span-2 flex items-center space-x-4">
-                        <button id="start-bot-button" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 flex items-center justify-center space-x-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                            <span>Start Bot</span>
-                        </button>
-                        <button id="stop-bot-button" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 flex items-center justify-center space-x-2" disabled>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12"></rect></svg>
-                            <span>Stop Bot</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Opportunities -->
-            <div class="mb-6">
-                <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Opportunities</h2>
-                <div id="opportunities-container" class="space-y-4">
-                     <!-- Opportunity cards will be appended here -->
-                </div>
-            </div>
-
-            <!-- Log Output -->
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg">
-                <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Activity Log</h2>
-                <div id="log-container" class="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm space-y-2">
-                    <!-- Logs will be appended here -->
-                </div>
-            </div>
-        </main>
-        
-        <!-- Login required message -->
-        <div id="login-prompt" class="text-center py-12">
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-gray-400 mb-4"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"></path></svg>
-            <h2 class="text-xl font-semibold text-gray-700 dark:text-gray-300">Please login to start the bot.</h2>
-            <p class="text-gray-500 dark:text-gray-400 mt-1">Use your WAX Cloud Wallet to get started.</p>
-        </div>
-
-    </div>
-
-    <script>
-        // --- App ---
-        const App = {
-            // Configuration
-            config: {
-                rpcEndpoint: 'https://wax.greymass.com',
-                tokens: [],
-                dexes: {
-                    alcor: { name: 'Alcor', swapContract: 'alcor.pt' } 
-                },
-                botInterval: 20000,
-                slippage: 0.30 // Slippage in percent for swap router
-            },
-
-            // State
-            state: {
-                wax: null,
-                userAccount: null,
-                botRunning: false,
-                botIntervalId: null,
-                isTrading: false,
-            },
-            
-            // DOM Elements (will be populated in init)
-            elements: {},
-
-            // Initialization
-            init(waxInstance) {
-                this.state.wax = waxInstance;
-                this.elements = {
-                    loginButton: document.getElementById('login-button'),
-                    logoutButton: document.getElementById('logout-button'),
-                    userInfo: document.getElementById('user-info'),
-                    accountName: document.getElementById('account-name'),
-                    waxBalance: document.getElementById('wax-balance'),
-                    mainContent: document.getElementById('main-content'),
-                    loginPrompt: document.getElementById('login-prompt'),
-                    startBotButton: document.getElementById('start-bot-button'),
-                    stopBotButton: document.getElementById('stop-bot-button'),
-                    logContainer: document.getElementById('log-container'),
-                    opportunitiesContainer: document.getElementById('opportunities-container'),
-                    tradeAmountInput: document.getElementById('trade-amount'),
-                    minProfitInput: document.getElementById('min-profit'),
-                    updateTokensButton: document.getElementById('update-tokens-button'),
-                    tokenCount: document.getElementById('token-count'),
-                };
-
-                this.log('Initializing WAX Arbitrage Bot...', 'info');
-                this.log('Click "Update Token List" to load markets.', 'info');
-                this.addEventListeners();
-                this.handleAutoLogin();
-            },
-
-            handleAutoLogin() {
-                if (this.state.wax && this.state.wax.userAccount) {
-                    this.log('Auto-login successful.', 'success');
-                    this.state.userAccount = this.state.wax.userAccount;
-                    this.onLogin();
-                } else {
-                    this.log('No previous session. Please click the Login button.', 'info');
-                }
-            },
-
-            addEventListeners() {
-                this.elements.loginButton.addEventListener('click', () => this.login());
-                this.elements.logoutButton.addEventListener('click', () => this.logout());
-                this.elements.startBotButton.addEventListener('click', () => this.startBot());
-                this.elements.stopBotButton.addEventListener('click', () => this.stopBot());
-                this.elements.updateTokensButton.addEventListener('click', () => this.updateTokensAndPools());
-            },
-            
-            async updateTokensAndPools() {
-                this.log('Fetching token lists from Alcor...', 'info');
-                this.elements.updateTokensButton.disabled = true;
-                this.elements.updateTokensButton.textContent = 'Updating...';
-
-                try {
-                    const pairsResponse = await fetch('https://wax.alcor.exchange/api/v2/pairs');
-                    if (!pairsResponse.ok) throw new Error(`Alcor API /pairs request failed: ${pairsResponse.status}`);
-                    const alcorPairs = await pairsResponse.json();
-                    
-                     const allTokens = new Map();
-                     alcorPairs.forEach(p => {
-                        if (p.base && p.base.contract && p.base.symbol && p.base.id) {
-                            allTokens.set(p.base.id, { ...p.base });
-                        }
-                        if (p.target && p.target.contract && p.target.symbol && p.target.id) {
-                            allTokens.set(p.target.id, { ...p.target });
-                        }
-                    });
-
-                    this.config.tokens = Array.from(allTokens.values());
-                    this.log(`Loaded ${this.config.tokens.length} unique tokens from Alcor.`, 'success');
-
-                } catch (error) {
-                    this.log(`Failed to update data from Alcor: ${error.message}`, 'error');
-                } finally {
-                    this.elements.tokenCount.textContent = this.config.tokens.length;
-                    this.elements.updateTokensButton.disabled = false;
-                    this.elements.updateTokensButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9V3m0 18a9 9 0 0 0 9-9M3 12a9 9 0 0 0 9 9"/></svg><span>Update Token List</span>';
-                }
-            },
-
-            // Logging & UI
-            log(message, type = 'info') {
-                const colors = {
-                    info: 'dark:text-gray-400 text-gray-600',
-                    success: 'dark:text-green-400 text-green-600',
-                    error: 'dark:text-red-400 text-red-600',
-                    trade: 'dark:text-yellow-400 text-yellow-600',
-                    opportunity: 'dark:text-cyan-400 text-cyan-600',
-                };
-                
-                if (!this.elements.logContainer) { console.error("Log container not found!"); return; }
-                const logEntry = document.createElement('div');
-                logEntry.className = `text-xs ${colors[type]}`;
-                const timestamp = new Date().toLocaleTimeString();
-                logEntry.innerHTML = `<span>[${timestamp}]</span> <span class="ml-2">${message}</span>`;
-                this.elements.logContainer.appendChild(logEntry);
-                this.elements.logContainer.scrollTop = this.elements.logContainer.scrollHeight;
-            },
-
-            displayOpportunity(opportunity) {
-                const { route, profitPercent, amountIn, finalWaxAmount, intermediateAmounts } = opportunity;
-                const card = document.createElement('div');
-                card.className = 'bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md border-l-4 border-cyan-400';
-                
-                const path = route.map(t => t.symbol).join(' → ');
-                let breakdown = `${amountIn.toFixed(route[0].precision)} ${route[0].symbol}`;
-                for(let i = 0; i < intermediateAmounts.length; i++) {
-                    breakdown += ` → ${intermediateAmounts[i].toFixed(route[i+1].precision)} ${route[i+1].symbol}`;
-                }
-                breakdown += ` → ${finalWaxAmount.toFixed(route[route.length - 1].precision)} ${route[route.length - 1].symbol}`;
-
-
-                card.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <p class="font-bold text-gray-900 dark:text-white">${path}</p>
-                            <p class="text-sm text-gray-600 dark:text-gray-300">Est. Profit: <span class="font-semibold text-green-500">${profitPercent.toFixed(4)}%</span></p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">${breakdown}</p>
-                        </div>
-                        <button class="trade-now-button bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg transition">Trade Now</button>
-                    </div>
-                `;
-
-                this.elements.opportunitiesContainer.prepend(card);
-                
-                card.querySelector('.trade-now-button').addEventListener('click', (e) => {
-                    const button = e.target;
-                    button.disabled = true;
-                    button.textContent = 'Executing...';
-                    this.executeTrade(opportunity);
-                });
-            },
-
-            // Authentication
-            async login() {
-                if (this.state.userAccount) { this.log('Already logged in.', 'info'); return; }
-                if (!this.state.wax) { this.log('WAX object not initialized.', 'error'); return; }
-                try {
-                    this.log('Opening WAX Cloud Wallet...', 'info');
-                    this.elements.loginButton.disabled = true;
-                    this.elements.loginButton.textContent = 'Connecting...';
-                    const userAccount = await this.state.wax.login();
-                    if (userAccount) {
-                        this.state.userAccount = userAccount;
-                        await this.onLogin();
-                    } else { throw new Error("Login did not return a user account."); }
-                } catch (error) {
-                    this.log(`Login failed: ${error.message}`, 'error');
-                    this.elements.loginButton.disabled = false;
-                    this.elements.loginButton.textContent = 'Login';
-                    if (String(error).includes('User cancelled')) { this.log('Login cancelled by user.', 'info');
-                    } else if (String(error).includes('popup')) { this.log('Please allow popups for this site to login.', 'error'); }
-                }
-            },
-
-            async onLogin() {
-                this.elements.loginButton.classList.add('hidden');
-                this.elements.userInfo.classList.remove('hidden');
-                this.elements.userInfo.classList.add('flex');
-                this.elements.mainContent.classList.remove('hidden');
-                this.elements.loginPrompt.classList.add('hidden');
-                this.elements.accountName.textContent = this.state.userAccount;
-                this.log(`Successfully logged in as ${this.state.userAccount}`, 'success');
-                await this.updateWaxBalance();
-            },
-
-            logout() {
-                this.stopBot();
-                this.state.userAccount = null;
-                this.elements.loginButton.classList.remove('hidden');
-                this.elements.loginButton.disabled = false;
-                this.elements.loginButton.textContent = 'Login';
-                this.elements.userInfo.classList.add('hidden');
-                this.elements.mainContent.classList.add('hidden');
-                this.elements.loginPrompt.classList.remove('hidden');
-                this.log('Logged out successfully.', 'info');
-            },
-
-            async updateWaxBalance() {
-                if (!this.state.userAccount) return;
-                try {
-                    const balanceResult = await this.state.wax.rpc.get_currency_balance('eosio.token', this.state.userAccount, 'WAX');
-                    this.elements.waxBalance.textContent = balanceResult.length > 0 ? balanceResult[0] : '0.00000000 WAX';
-                } catch (error) { this.log(`Failed to fetch WAX balance: ${error.message}`, 'error'); }
-            },
-            
-            // Bot Logic
-            startBot() {
-                if (this.state.botRunning) return;
-                if(this.config.tokens.length === 0) {
-                    this.log('Token list is empty. Please update tokens first.', 'error');
-                    return;
-                }
-                this.state.botRunning = true;
-                this.elements.opportunitiesContainer.innerHTML = ''; // Clear old opportunities
-                this.elements.startBotButton.disabled = true;
-                this.elements.stopBotButton.disabled = false;
-                this.log('Arbitrage bot started.', 'success');
-                this.runArbitrageCheck();
-                this.state.botIntervalId = setInterval(() => this.runArbitrageCheck(), this.config.botInterval);
-            },
-
-            stopBot() {
-                if (!this.state.botRunning) return;
-                this.state.botRunning = false;
-                clearInterval(this.state.botIntervalId);
-                this.state.botIntervalId = null;
-                this.elements.startBotButton.disabled = false;
-                this.elements.stopBotButton.disabled = true;
-                this.log('Arbitrage bot stopped.', 'info');
-            },
-            
-            async runArbitrageCheck() {
-                if (this.state.isTrading) { this.log('Skipping check, a trade is in progress.', 'info'); return; }
-                this.log(`Scanning ${this.config.tokens.length} tokens for swap routes...`, 'info');
-                await this.checkSwapRouterArbitrage();
-            },
-
-            async checkSwapRouterArbitrage() {
-                const tradeAmountWax = parseFloat(this.elements.tradeAmountInput.value);
-                const minProfitPercent = parseFloat(this.elements.minProfitInput.value) / 100;
-                const WAX_TOKEN = this.config.tokens.find(p => p.symbol === 'WAX' && p.contract === 'eosio.token');
-                if(!WAX_TOKEN) {
-                    this.log('WAX token not found in list. Update tokens.', 'error');
-                    return;
-                }
-
-                for (const tokenA of this.config.tokens) {
-                    if (tokenA.id === WAX_TOKEN.id) continue;
-
-                    try {
-                        // --- Common Step 1: WAX -> Token A ---
-                        const url1 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${WAX_TOKEN.id}&output=${tokenA.id}&amount=${tradeAmountWax.toFixed(WAX_TOKEN.precision)}&slippage=${this.config.slippage}`;
-                        const response1 = await fetch(url1);
-                        if(!response1.ok) continue;
-                        const routeData1 = await response1.json();
-                        if(!routeData1 || !routeData1.output) continue;
-                        const amountOutA = parseFloat(routeData1.output);
-
-                        // --- Check for 2-step (A -> WAX) ---
-                        const url2 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${tokenA.id}&output=${WAX_TOKEN.id}&amount=${amountOutA.toFixed(tokenA.precision)}&slippage=${this.config.slippage}`;
-                        const response2 = await fetch(url2);
-                        if(response2.ok) {
-                            const routeData2 = await response2.json();
-                            if(routeData2 && routeData2.output) {
-                                const finalWaxAmount = parseFloat(routeData2.output);
-                                const profit = finalWaxAmount - tradeAmountWax;
-                                const profitPercent = (profit / tradeAmountWax);
-                                if (profit > 0 && profitPercent > minProfitPercent) {
-                                     const opportunity = {
-                                        route: [WAX_TOKEN, tokenA, WAX_TOKEN],
-                                        intermediateAmounts: [amountOutA],
-                                        amountIn: tradeAmountWax,
-                                        finalWaxAmount: finalWaxAmount,
-                                        memos: [routeData1.memo, routeData2.memo],
-                                        profitPercent: profitPercent * 100
-                                    };
-                                    this.displayOpportunity(opportunity);
-                                    return;
-                                }
-                            }
-                        }
-                        
-                        // --- Check for 3-step (A -> B -> WAX) ---
-                        for (const tokenB of this.config.tokens) {
-                             if (tokenB.id === WAX_TOKEN.id || tokenB.id === tokenA.id) continue;
-                             try {
-                                const url3 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${tokenA.id}&output=${tokenB.id}&amount=${amountOutA.toFixed(tokenA.precision)}&slippage=${this.config.slippage}`;
-                                const response3 = await fetch(url3);
-                                if (!response3.ok) continue;
-                                const routeData3 = await response3.json();
-                                if (!routeData3 || !routeData3.output) continue;
-                                const amountOutB = parseFloat(routeData3.output);
-
-                                const url4 = `https://wax.alcor.exchange/api/v2/swapRouter/getRoute?trade_type=EXACT_INPUT&input=${tokenB.id}&output=${WAX_TOKEN.id}&amount=${amountOutB.toFixed(tokenB.precision)}&slippage=${this.config.slippage}`;
-                                const response4 = await fetch(url4);
-                                if (!response4.ok) continue;
-                                const routeData4 = await response4.json();
-                                if (!routeData4 || !routeData4.output) continue;
-                                const finalWaxAmount3Step = parseFloat(routeData4.output);
-                                
-                                const profit3Step = finalWaxAmount3Step - tradeAmountWax;
-                                const profitPercent3Step = (profit3Step / tradeAmountWax);
-
-                                if (profit3Step > 0 && profitPercent3Step > minProfitPercent) {
-                                    const opportunity = {
-                                        route: [WAX_TOKEN, tokenA, tokenB, WAX_TOKEN],
-                                        intermediateAmounts: [amountOutA, amountOutB],
-                                        amountIn: tradeAmountWax,
-                                        finalWaxAmount: finalWaxAmount3Step,
-                                        memos: [routeData1.memo, routeData3.memo, routeData4.memo],
-                                        profitPercent: profitPercent3Step * 100
-                                    };
-                                    this.displayOpportunity(opportunity);
-                                    return; // Stop after finding any profitable route
-                                }
-                             } catch(e) { /* continue inner loop */ }
-                        }
-
-                    } catch(e) { /* Suppress errors for tokens that don't have a valid route */ }
-                }
-            },
-            
-            // Trade Execution
-            async executeTrade(opportunity) {
-                if (this.state.isTrading) {
-                    this.log('Trade skipped: Another trade in progress.', 'trade');
-                    return;
-                }
-                this.state.isTrading = true;
-
-                const { route, memos, amountIn, intermediateAmounts } = opportunity;
-                const swapContract = this.config.dexes.alcor.swapContract;
-
-                try {
-                    let currentAmount = amountIn;
-                    for (let i = 0; i < memos.length; i++) {
-                        const fromToken = route[i];
-                        const toToken = route[i + 1];
-                        const memo = memos[i];
-                        const quantity = `${currentAmount.toFixed(fromToken.precision)} ${fromToken.symbol}`;
-
-                        this.log(`Executing Step ${i + 1}/${memos.length}: ${fromToken.symbol} → ${toToken.symbol}`, 'trade');
-                        
-                        const result = await this.state.wax.api.transact({
-                            actions: [{
-                                account: fromToken.contract,
-                                name: 'transfer',
-                                authorization: [{ actor: this.state.userAccount, permission: 'active' }],
-                                data: {
-                                    from: this.state.userAccount,
-                                    to: swapContract,
-                                    quantity: quantity,
-                                    memo: memo,
-                                },
-                            }]
-                        }, { blocksBehind: 3, expireSeconds: 90 });
-
-                        this.log(`Step ${i + 1} successful: ${result.transaction_id.substring(0,12)}...`, 'success');
-                        
-                        if (i < memos.length - 1) {
-                             await new Promise(resolve => setTimeout(resolve, 1500)); // Wait for chain update
-                             currentAmount = intermediateAmounts[i];
-                        }
-                    }
-                    
-                    this.log('Full arbitrage trade completed!', 'success');
-                    this.elements.opportunitiesContainer.innerHTML = '';
-
-                } catch (e) {
-                    this.log(`Trade failed: ${e.message}`, 'error');
-                } finally {
-                    this.state.isTrading = false;
-                    await this.updateWaxBalance();
-                }
-            }
-        };
-
-        // --- App Initialization ---
-        document.addEventListener('DOMContentLoaded', () => {
-             let checks = 0;
-            const maxChecks = 100; // 10 seconds timeout
-            const checkInterval = setInterval(() => {
-                checks++;
-                if (typeof waxjs !== 'undefined' && waxjs.WaxJS) {
-                    clearInterval(checkInterval);
-                    initializeApp();
-                } else if (checks > maxChecks) {
-                    clearInterval(checkInterval);
-                    console.error("ERROR: WaxJS library failed to load after 10 seconds.");
-                    const logContainer = document.getElementById('log-container');
-                    const errorMessage = 'Critical Error: WaxJS library failed to load. Please check your internet connection and refresh.';
-                     if (logContainer) {
-                        logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
-                    } else {
-                        document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
-                    }
-                }
-            }, 100);
-
-            async function initializeApp() {
-                try {
-                    const wax = new waxjs.WaxJS({ rpcEndpoint: App.config.rpcEndpoint });
-                    await wax.isAutoLoginAvailable();
-                    App.init(wax);
-                } catch (error) {
-                    console.error("Failed to initialize the application:", error);
-                    const logContainer = document.getElementById('log-container');
-                    const errorMessage = 'Critical Error: Could not start the application. See console for details.';
-                    if(logContainer) {
-                        logContainer.innerHTML = `<div class="dark:text-red-400 text-red-600">${errorMessage}</div>`;
-                    } else {
-                        document.body.innerHTML = `<div style="color: red; padding: 20px;">${errorMessage}</div>`;
-                    }
-                }
-            }
-        });
-    </script>
 </body>
 </html>
-
